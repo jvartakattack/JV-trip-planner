@@ -706,9 +706,11 @@ function buildInboundEntries(origin, currentTime, firstMileMode) {
   const nowMin = minutesSinceMidnight(currentTime);
 
   // For e-bike: find nearest dock to origin, compute walk-to-dock + bike-to-station
+  // Only use if the dock actually has e-bikes available
   let nearestDock = null;
   if (firstMileMode === 'ebike') {
-    nearestDock = findNearestDock(origin.lat, origin.lng);
+    const dock = findNearestDock(origin.lat, origin.lng);
+    if (dock && dock.ebikes > 0) nearestDock = dock;
   }
 
   const boardingOptions = findClosestBoardingStation(origin.lat, origin.lng);
