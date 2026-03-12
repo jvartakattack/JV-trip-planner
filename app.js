@@ -2413,11 +2413,86 @@ document.addEventListener('DOMContentLoaded', () => {
     requestAnimationFrame(frame);
   }
 
-  function thudHome(card) {
+  function dropHome(card, callback) {
     const icon = card.querySelector('.landing-icon');
-    if (!icon) return;
-    icon.classList.add('home-thud');
-    icon.addEventListener('animationend', () => icon.classList.remove('home-thud'), { once: true });
+    if (!icon) { callback(); return; }
+
+    const rect = icon.getBoundingClientRect();
+    const clone = document.createElement('div');
+    clone.textContent = icon.textContent;
+    clone.style.cssText = `
+      position:fixed;left:${rect.left}px;top:${rect.top}px;
+      font-size:${rect.height}px;line-height:1;
+      z-index:9999;pointer-events:none;will-change:transform,opacity;
+    `;
+    document.body.appendChild(clone);
+    icon.style.opacity = '0';
+
+    landing.style.transition = 'opacity 0.5s ease';
+    landing.style.opacity = '0';
+
+    const startX = rect.left;
+    const startY = rect.top;
+    const floor = window.innerHeight - rect.height - 10;
+    const dropDist = floor - startY;
+    const offScreenX = window.innerWidth + 60;
+
+    // Phase 1: drop to floor (0 → 0.3)
+    // Phase 2: bounce 1 — high, rightward (0.3 → 0.5)
+    // Phase 3: bounce 2 — medium (0.5 → 0.7)
+    // Phase 4: bounce 3 — small, tumbles off right (0.7 → 1.0)
+    const duration = 1100;
+    const startTime = performance.now();
+
+    function frame(now) {
+      const elapsed = now - startTime;
+      const t = Math.min(elapsed / duration, 1);
+      let x = 0, y = 0, rotate = 0, opacity = 1;
+
+      if (t < 0.3) {
+        // Drop: accelerate downward
+        const p = t / 0.3;
+        const ease = p * p; // gravity-like
+        y = dropDist * ease;
+        rotate = p * 5;
+      } else if (t < 0.5) {
+        // Bounce 1: arc up then back to floor, move right
+        const p = (t - 0.3) / 0.2;
+        const arc = Math.sin(p * Math.PI);
+        y = dropDist - arc * dropDist * 0.35;
+        x = p * 80;
+        rotate = 5 + p * 10;
+      } else if (t < 0.7) {
+        // Bounce 2: smaller arc, more rightward
+        const p = (t - 0.5) / 0.2;
+        const arc = Math.sin(p * Math.PI);
+        y = dropDist - arc * dropDist * 0.15;
+        x = 80 + p * 100;
+        rotate = 15 + p * 15;
+      } else {
+        // Bounce 3: tiny bounce, tumble off right edge
+        const p = (t - 0.7) / 0.3;
+        const arc = Math.sin(p * Math.PI * 0.7);
+        y = dropDist - arc * dropDist * 0.06;
+        x = 180 + p * (offScreenX - startX);
+        rotate = 30 + p * 90;
+        opacity = 1 - Math.max(0, (p - 0.5) * 2);
+      }
+
+      clone.style.transform = `translate(${x}px, ${y}px) rotate(${rotate}deg)`;
+      clone.style.opacity = opacity;
+
+      if (t < 1) {
+        requestAnimationFrame(frame);
+      } else {
+        clone.remove();
+        icon.style.opacity = '';
+        landing.style.transition = '';
+        landing.style.opacity = '';
+        callback();
+      }
+    }
+    requestAnimationFrame(frame);
   }
 
   async function enterApp(direction) {
@@ -2451,8 +2526,7 @@ document.addEventListener('DOMContentLoaded', () => {
       if (direction === 'outbound') {
         launchRocket(card, () => enterApp(direction));
       } else {
-        thudHome(card);
-        setTimeout(() => enterApp(direction), 350);
+        dropHome(card, () => enterApp(direction));
       }
     });
   });
