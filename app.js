@@ -594,30 +594,55 @@ async function reverseGeocode(lat, lng) {
 // ── Inbound Trip Planning ───────────────────────────────────────────────────
 
 // Bay Wheels GBFS — real-time e-bike availability (no API key needed)
+const GBFS_STATION_INFO_URL = 'https://gbfs.lyft.com/gbfs/2.3/bay/en/station_information.json';
 const GBFS_STATION_STATUS_URL = 'https://gbfs.lyft.com/gbfs/2.3/bay/en/station_status.json';
 const WEST_PORTAL_DOCK_ID = '2114365359206953814'; // "West Portal MUNI" dock
 const EBIKE_RIDE_HOME_MIN = 5; // West Portal → home by e-bike
 
-let westPortalEbikes = { available: null, lastChecked: 0 };
+// Unified e-bike availability state
+let ebikeAvailability = { westPortal: null, home: null, lastChecked: 0 };
+let bayWheelsStationCache = null;
 
-async function fetchWestPortalEbikes() {
-  // Cache for 60 seconds
-  if (Date.now() - westPortalEbikes.lastChecked < 60000 && westPortalEbikes.available !== null) {
-    return westPortalEbikes.available;
-  }
+function getEbikeCountFromStatus(status) {
+  if (!status) return 0;
+  const ebikeType = status.vehicle_types_available?.find(v => v.vehicle_type_id === '2');
+  return ebikeType ? ebikeType.count : (status.num_ebikes_available || 0);
+}
+
+async function refreshEbikeAvailability() {
+  if (Date.now() - ebikeAvailability.lastChecked < 60000) return;
   try {
-    const resp = await fetch(GBFS_STATION_STATUS_URL);
-    const data = await resp.json();
-    const station = data.data.stations.find(s => String(s.station_id) === WEST_PORTAL_DOCK_ID);
-    if (station) {
-      // Count e-bikes specifically from vehicle types, or fall back to num_ebikes_available
-      const ebikeType = station.vehicle_types_available?.find(v => v.vehicle_type_id === '2');
-      const count = ebikeType ? ebikeType.count : (station.num_ebikes_available || 0);
-      westPortalEbikes = { available: count, lastChecked: Date.now() };
-      return count;
+    // Fetch station locations (once) and current statuses
+    const fetches = [fetch(GBFS_STATION_STATUS_URL)];
+    if (!bayWheelsStationCache) fetches.push(fetch(GBFS_STATION_INFO_URL));
+    const responses = await Promise.all(fetches);
+
+    const statusData = await responses[0].json();
+    if (responses[1]) {
+      const infoData = await responses[1].json();
+      bayWheelsStationCache = infoData.data.stations;
     }
+
+    // Build status lookup
+    const statusMap = {};
+    for (const s of statusData.data.stations) statusMap[String(s.station_id)] = s;
+
+    // West Portal availability
+    ebikeAvailability.westPortal = getEbikeCountFromStatus(statusMap[WEST_PORTAL_DOCK_ID]);
+
+    // Home-area availability: find closest 3 docks and sum e-bikes
+    if (bayWheelsStationCache) {
+      const nearby = bayWheelsStationCache
+        .map(s => ({ id: String(s.station_id), dist: haversineDistanceRaw(HOME_STOP.lat, HOME_STOP.lng, s.lat, s.lon) }))
+        .sort((a, b) => a.dist - b.dist)
+        .slice(0, 3);
+      let total = 0;
+      for (const s of nearby) total += getEbikeCountFromStatus(statusMap[s.id]);
+      ebikeAvailability.home = total;
+    }
+
+    ebikeAvailability.lastChecked = Date.now();
   } catch { /* fail silently */ }
-  return null;
 }
 
 // Home-area exit stations for inbound trips
@@ -693,7 +718,7 @@ function buildInboundEntries(origin, currentTime, firstMileMode) {
 
       // Generate last-mile variants: walk home, and e-bike home if available at this station
       const lastMileOptions = [{ mode: 'walk', time: exitInfo.walkHome }];
-      if (exitInfo.ebikeHome && westPortalEbikes.available > 0) {
+      if (exitInfo.ebikeHome && ebikeAvailability.westPortal > 0) {
         lastMileOptions.push({ mode: 'ebike', time: exitInfo.ebikeHome });
       }
 
@@ -1084,6 +1109,9 @@ function renderRecommendation(currentTime) {
   // Build candidate descriptions keyed by arrival or departure time
   const candidates = [];
 
+  // Only include e-bike if bikes are confirmed available near home
+  const bikesAvailable = bestBike && ebikeAvailability.home > 0;
+
   if (selectedDestination) {
     if (bestBus) {
       const busLeaveIn = Math.max(0, bestBus.busEta - (bestBus.walkToStop || 0));
@@ -1093,7 +1121,7 @@ function renderRecommendation(currentTime) {
         summary: `${busLeaveNote} — take the ${bestBus.busRoute} (${bestBus.walkToStop || 0}m walk) to ${bestBus.transferStation}, catch the ${trainName} to ${bestBus.exitStation}. Arrive by ${formatTime(bestBus.arrivalTime)}.`
       });
     }
-    if (bestBike) {
+    if (bikesAvailable) {
       const trainName = TRAIN_LINE_COLORS[bestBike.trainLine].name;
       const walkNote = bestBike.walkMin ? `${bestBike.walkMin}m walk + ${bestBike.rideMin}m ride` : `${bestBike.rideMin}m ride`;
       candidates.push({ min: bestBike.arrivalMin, mode: 'ebike',
@@ -1115,7 +1143,7 @@ function renderRecommendation(currentTime) {
         summary: `${busLeaveNote} — take the ${bestBus.busRoute} (${bestBus.walkToStop || 0}m walk) to ${bestBus.transferStation}, catch the ${trainName} at ${formatTime(bestBus.departTime)}.`
       });
     }
-    if (bestBike) {
+    if (bikesAvailable) {
       const trainName = TRAIN_LINE_COLORS[bestBike.trainLine].name;
       const walkNote = bestBike.walkMin ? `${bestBike.walkMin}m walk + ${bestBike.rideMin}m ride` : `${bestBike.rideMin}m ride`;
       candidates.push({ min: bestBike.trainDepartMin, mode: 'ebike',
@@ -1205,11 +1233,11 @@ function renderArrivals() {
     }
 
     // E-bike availability banner for inbound
-    const ebikeBanner = westPortalEbikes.available !== null
+    const ebikeBanner = ebikeAvailability.westPortal !== null
       ? `<div style="padding:10px 14px;margin-bottom:10px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);font-size:13px;display:flex;align-items:center;gap:8px">
           <span>&#x1f6b2;</span>
-          <span style="color:${westPortalEbikes.available > 0 ? 'var(--green)' : 'var(--red)'}">
-            ${westPortalEbikes.available} e-bike${westPortalEbikes.available !== 1 ? 's' : ''} at West Portal
+          <span style="color:${ebikeAvailability.westPortal > 0 ? 'var(--green)' : 'var(--red)'}">
+            ${ebikeAvailability.westPortal} e-bike${ebikeAvailability.westPortal !== 1 ? 's' : ''} at West Portal
           </span>
           <span style="color:var(--text-dim);font-size:11px;margin-left:auto">Bay Wheels live</span>
         </div>` : '';
@@ -2140,7 +2168,7 @@ function openInboundModal(entry) {
         <div class="timeline-content">
           <div class="timeline-title">${entry.lastMileMode === 'ebike' ? 'E-bike home' : 'Walk home'}</div>
           <div class="timeline-duration">${entry.lastMileTime || entry.walkHome} min ${entry.lastMileMode === 'ebike' ? 'ride' : 'walk'}</div>
-          ${entry.lastMileMode === 'ebike' && westPortalEbikes.available !== null ? `<div class="timeline-detail">${westPortalEbikes.available} e-bike${westPortalEbikes.available !== 1 ? 's' : ''} available now</div>` : ''}
+          ${entry.lastMileMode === 'ebike' && ebikeAvailability.westPortal !== null ? `<div class="timeline-detail">${ebikeAvailability.westPortal} e-bike${ebikeAvailability.westPortal !== 1 ? 's' : ''} available now</div>` : ''}
         </div>
       </div>
     </div>
@@ -2251,9 +2279,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Refresh real-time data every 30s, then re-render
   async function refreshAndRender() {
-    const tasks = [refreshLiveData()];
-    if (activeDirection === 'inbound') tasks.push(fetchWestPortalEbikes());
-    await Promise.all(tasks);
+    await Promise.all([refreshLiveData(), refreshEbikeAvailability()]);
     renderArrivals();
   }
   setInterval(refreshAndRender, 30000);
@@ -2309,7 +2335,7 @@ document.addEventListener('DOMContentLoaded', () => {
         // Detect location and prefill; also fetch e-bike availability
         document.getElementById('arrivals-list').innerHTML = '<div class="empty-state">Detecting your location...</div>';
         try {
-          const [pos] = await Promise.all([getCurrentPosition(), fetchWestPortalEbikes()]);
+          const [pos] = await Promise.all([getCurrentPosition(), refreshEbikeAvailability()]);
           const geo = await reverseGeocode(pos.lat, pos.lng);
           input.value = geo.short;
           selectDestination({ ...geo, lat: pos.lat, lng: pos.lng });
