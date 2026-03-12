@@ -111,8 +111,9 @@ const MUNI_STATIONS = {
 };
 
 
-// E-bike: walk 7min to nearest dock, then ride to a Muni station
-const WALK_TO_DOCK_MIN = 7;
+// E-bike: walk to nearest dock, then ride to a Muni station
+const WALK_TO_DOCK_MIN = 7;       // home → nearest dock (Outer Sunset)
+const CITY_WALK_TO_DOCK_MIN = 3;  // typical city walk to find a Bay Wheels dock
 const EBIKE_STATIONS = [
   { name: 'Taraval & 19th', ...MUNI_STATIONS['Taraval & 19th'], rideMin: 2, walkMin: WALK_TO_DOCK_MIN },
   { name: 'West Portal',    ...MUNI_STATIONS['West Portal'],    rideMin: 5, walkMin: WALK_TO_DOCK_MIN }
@@ -697,7 +698,7 @@ function buildInboundEntries(origin, currentTime, firstMileMode) {
 
   for (const boarding of nearbyStations) {
     const firstMileTime = firstMileMode === 'walk' ? boarding.walkMin
-      : firstMileMode === 'ebike' ? Math.max(boarding.bikeMin, 2) + WALK_TO_DOCK_MIN
+      : firstMileMode === 'ebike' ? Math.max(boarding.bikeMin, 2) + CITY_WALK_TO_DOCK_MIN
       : boarding.walkMin;
 
     const arriveAtStationMin = nowMin + firstMileTime;
@@ -1127,9 +1128,6 @@ function renderRecommendation(currentTime) {
   // Build candidate descriptions keyed by arrival or departure time
   const candidates = [];
 
-  // Only include e-bike if bikes are confirmed available near home
-  const bikesAvailable = bestBike && ebikeAvailability.home > 0;
-
   if (selectedDestination) {
     if (bestBus) {
       const busLeaveIn = Math.max(0, bestBus.busEta - (bestBus.walkToStop || 0));
@@ -1139,7 +1137,7 @@ function renderRecommendation(currentTime) {
         summary: `${busLeaveNote} — take the ${bestBus.busRoute} (${bestBus.walkToStop || 0}m walk) to ${bestBus.transferStation}, catch the ${trainName} to ${bestBus.exitStation}. Arrive by ${formatTime(bestBus.arrivalTime)}.`
       });
     }
-    if (bikesAvailable) {
+    if (bestBike) {
       const trainName = TRAIN_LINE_COLORS[bestBike.trainLine].name;
       const walkNote = bestBike.walkMin ? `${bestBike.walkMin}m walk + ${bestBike.rideMin}m ride` : `${bestBike.rideMin}m ride`;
       candidates.push({ min: bestBike.arrivalMin, mode: 'ebike',
@@ -1161,7 +1159,7 @@ function renderRecommendation(currentTime) {
         summary: `${busLeaveNote} — take the ${bestBus.busRoute} (${bestBus.walkToStop || 0}m walk) to ${bestBus.transferStation}, catch the ${trainName} at ${formatTime(bestBus.departTime)}.`
       });
     }
-    if (bikesAvailable) {
+    if (bestBike) {
       const trainName = TRAIN_LINE_COLORS[bestBike.trainLine].name;
       const walkNote = bestBike.walkMin ? `${bestBike.walkMin}m walk + ${bestBike.rideMin}m ride` : `${bestBike.rideMin}m ride`;
       candidates.push({ min: bestBike.trainDepartMin, mode: 'ebike',
@@ -1266,7 +1264,7 @@ function renderArrivals() {
       trainDepartTime.setHours(Math.floor(e.trainDepartAbsolute / 60), Math.round(e.trainDepartAbsolute % 60), 0, 0);
 
       const firstMileLabel = e.firstMileMode === 'ebike'
-        ? `${WALK_TO_DOCK_MIN}m walk + ${e.firstMileTime - WALK_TO_DOCK_MIN}m bike`
+        ? `${CITY_WALK_TO_DOCK_MIN}m walk + ${e.firstMileTime - CITY_WALK_TO_DOCK_MIN}m bike`
         : `${e.firstMileTime}m walk`;
       const firstMileIcon = e.firstMileMode === 'ebike' ? '&#x1f6b2;' : '&#x1F6B6;';
 
@@ -2130,7 +2128,7 @@ function openInboundModal(entry) {
         </div>
         <div class="timeline-content">
           <div class="timeline-title">Walk to e-bike dock</div>
-          <div class="timeline-duration">${WALK_TO_DOCK_MIN} min walk</div>
+          <div class="timeline-duration">${CITY_WALK_TO_DOCK_MIN} min walk</div>
         </div>
       </div>
       <div class="timeline-step">
@@ -2140,7 +2138,7 @@ function openInboundModal(entry) {
         </div>
         <div class="timeline-content">
           <div class="timeline-title">Bike to ${entry.boardingStation}</div>
-          <div class="timeline-duration">${entry.firstMileTime - WALK_TO_DOCK_MIN} min ride</div>
+          <div class="timeline-duration">${entry.firstMileTime - CITY_WALK_TO_DOCK_MIN} min ride</div>
         </div>
       </div>
       ` : `
