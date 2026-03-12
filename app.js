@@ -945,7 +945,7 @@ function renderRecommendation(currentTime) {
   if (runnerUp) {
     const diff = Math.round(runnerUp.min - winner.min);
     if (diff > 0) {
-      const comparison = selectedDestination ? `arrive ${diff}m sooner than` : `on a train ${diff}m sooner than`;
+      const comparison = selectedDestination ? `arrive ${diff}m sooner than` : `be on a train ${diff}m sooner than`;
       detail = `You'll ${comparison} ${modeLabels[runnerUp.mode]}.`;
     }
   }
