@@ -2355,39 +2355,16 @@ document.addEventListener('DOMContentLoaded', () => {
   const app = document.getElementById('app');
   const backBtn = document.getElementById('back-btn');
 
-  function fireConfetti(originEl) {
-    const rect = originEl.getBoundingClientRect();
-    const cx = rect.left + rect.width / 2;
-    const cy = rect.top + rect.height / 2;
-    const colors = ['#64b5f6', '#66bb6a', '#ffa726', '#ef5350', '#9b59b6', '#d4a017', '#009bdf'];
-    const container = document.createElement('div');
-    container.style.cssText = 'position:fixed;inset:0;pointer-events:none;z-index:9999;overflow:hidden';
-    document.body.appendChild(container);
-
-    for (let i = 0; i < 80; i++) {
-      const piece = document.createElement('div');
-      const size = Math.random() * 8 + 4;
-      const color = colors[Math.floor(Math.random() * colors.length)];
-      const angle = Math.random() * Math.PI * 2;
-      const velocity = Math.random() * 250 + 100;
-      const dx = Math.cos(angle) * velocity;
-      const dy = Math.sin(angle) * velocity;
-      const spin = Math.random() * 720 - 360;
-      const duration = Math.random() * 0.6 + 0.8;
-      const delay = Math.random() * 0.15;
-
-      piece.style.cssText = `
-        position:absolute;left:${cx}px;top:${cy}px;
-        width:${size}px;height:${size * 1.4}px;
-        background:${color};border-radius:1px;
-        opacity:1;
-        animation:confetti-burst ${duration}s ${delay}s ease-out forwards;
-        --dx:${dx}px;--dy:${dy}px;--spin:${spin}deg;
-      `;
-      container.appendChild(piece);
+  function animateButton(card, direction) {
+    const icon = card.querySelector('.landing-icon');
+    if (!icon) return;
+    if (direction === 'outbound') {
+      icon.classList.add('rocket-launch');
+      icon.addEventListener('animationend', () => icon.classList.remove('rocket-launch'), { once: true });
+    } else {
+      icon.classList.add('home-thud');
+      icon.addEventListener('animationend', () => icon.classList.remove('home-thud'), { once: true });
     }
-
-    setTimeout(() => container.remove(), 2000);
   }
 
   async function enterApp(direction) {
@@ -2414,8 +2391,8 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   document.querySelectorAll('.landing-card').forEach(card => {
-    card.addEventListener('click', (e) => {
-      fireConfetti(card);
+    card.addEventListener('click', () => {
+      animateButton(card, card.dataset.direction);
       enterApp(card.dataset.direction);
     });
   });

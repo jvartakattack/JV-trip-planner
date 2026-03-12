@@ -283,7 +283,10 @@ h1 {
 
 .landing-card:active { transform: scale(0.97); }
 
-.landing-icon { font-size: 36px; }
+.landing-icon {
+  font-size: 36px;
+  display: inline-block;
+}
 
 .landing-label {
   font-size: 18px;
@@ -296,11 +299,26 @@ h1 {
   color: var(--text-dim);
 }
 
-/* ── Confetti ────────────────────────────────────────── */
-@keyframes confetti-burst {
-  0% { transform: translate(0, 0) rotate(0deg); opacity: 1; }
-  70% { opacity: 1; }
-  100% { transform: translate(var(--dx), var(--dy)) rotate(var(--spin)); opacity: 0; }
+/* ── Landing Button Animations ────────────────────────── */
+.rocket-launch {
+  animation: rocket-go 0.45s ease-in forwards;
+}
+
+@keyframes rocket-go {
+  0%   { transform: translateY(0) scale(1); opacity: 1; }
+  50%  { transform: translateY(-60px) scale(1.3); opacity: 1; }
+  100% { transform: translateY(-120px) scale(0.6); opacity: 0; }
+}
+
+.home-thud {
+  animation: home-drop 0.4s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+@keyframes home-drop {
+  0%   { transform: translateY(-40px) scale(0.8); opacity: 0.5; }
+  60%  { transform: translateY(4px) scale(1.15); opacity: 1; }
+  80%  { transform: translateY(-2px) scale(1); }
+  100% { transform: translateY(0) scale(1); opacity: 1; }
 }
 
 /* ── Back Button ─────────────────────────────────────── */
