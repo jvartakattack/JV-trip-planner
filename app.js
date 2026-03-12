@@ -2535,7 +2535,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   });
 
-  backBtn.addEventListener('click', () => {
+  function goBack() {
     app.classList.add('hidden');
     landing.style.opacity = '';
     landing.style.transition = '';
@@ -2544,7 +2544,24 @@ document.addEventListener('DOMContentLoaded', () => {
     input.value = '';
     destDisplay.classList.add('hidden');
     document.getElementById('recommendation').classList.add('hidden');
-  });
+  }
+
+  backBtn.addEventListener('click', goBack);
+
+  // Swipe right to go back
+  let touchStartX = 0, touchStartY = 0;
+  document.addEventListener('touchstart', (e) => {
+    touchStartX = e.touches[0].clientX;
+    touchStartY = e.touches[0].clientY;
+  }, { passive: true });
+  document.addEventListener('touchend', (e) => {
+    const dx = e.changedTouches[0].clientX - touchStartX;
+    const dy = Math.abs(e.changedTouches[0].clientY - touchStartY);
+    // Swipe right: must start near left edge, travel >80px horizontally, mostly horizontal, and app is showing
+    if (touchStartX < 40 && dx > 80 && dy < dx * 0.5 && landing.classList.contains('hidden')) {
+      goBack();
+    }
+  }, { passive: true });
 
   // Tabs
   document.querySelectorAll('.tab').forEach(tab => {

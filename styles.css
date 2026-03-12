@@ -32,15 +32,25 @@ body {
 #app {
   max-width: 540px;
   margin: 0 auto;
-  padding: 20px 16px 40px;
-  padding-top: calc(20px + env(safe-area-inset-top));
+  padding: 0 16px 40px;
   padding-bottom: calc(40px + env(safe-area-inset-bottom));
 }
 
 #app.hidden { display: none; }
 
 /* ── Header ──────────────────────────────────────────── */
-header { margin-bottom: 20px; }
+header {
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  background: var(--bg);
+  padding-top: calc(16px + env(safe-area-inset-top));
+  margin: 0 -16px;
+  padding-left: 16px;
+  padding-right: 16px;
+  padding-bottom: 4px;
+  margin-bottom: 16px;
+}
 
 .header-top {
   display: flex;
