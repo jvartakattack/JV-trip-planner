@@ -610,6 +610,7 @@ const HOME_DOCK_SEARCH_RADIUS_KM = 0.4; // match GBFS stations within 400m of kn
 // Unified e-bike availability state
 let ebikeAvailability = { westPortal: null, home: null, homeDocks: [], lastChecked: 0 };
 let bayWheelsStationCache = null;
+let bayWheelsStatusMap = {};
 
 function getEbikeCountFromStatus(status) {
   if (!status) return 0;
@@ -631,12 +632,12 @@ async function refreshEbikeAvailability() {
       bayWheelsStationCache = infoData.data.stations;
     }
 
-    // Build status lookup
-    const statusMap = {};
-    for (const s of statusData.data.stations) statusMap[String(s.station_id)] = s;
+    // Build status lookup (cached globally for per-dock lookups)
+    bayWheelsStatusMap = {};
+    for (const s of statusData.data.stations) bayWheelsStatusMap[String(s.station_id)] = s;
 
     // West Portal availability
-    ebikeAvailability.westPortal = getEbikeCountFromStatus(statusMap[WEST_PORTAL_DOCK_ID]);
+    ebikeAvailability.westPortal = getEbikeCountFromStatus(bayWheelsStatusMap[WEST_PORTAL_DOCK_ID]);
 
     // Home-area availability: match GBFS stations to known home docks by proximity
     let homeTotal = 0;
@@ -651,7 +652,7 @@ async function refreshEbikeAvailability() {
             best = { id: String(s.station_id), name: s.name, dist };
           }
         }
-        const count = best ? getEbikeCountFromStatus(statusMap[best.id]) : 0;
+        const count = best ? getEbikeCountFromStatus(bayWheelsStatusMap[best.id]) : 0;
         homeTotal += count;
         dockDetails.push({ name: dock.name, ebikes: count, matched: !!best });
       }
@@ -692,10 +693,11 @@ function findNearestDock(lat, lng) {
   let best = null;
   for (const s of bayWheelsStationCache) {
     const dist = haversineDistanceRaw(lat, lng, s.lat, s.lon);
-    if (!best || dist < best.dist) best = { lat: s.lat, lng: s.lon, dist, name: s.name };
+    if (!best || dist < best.dist) best = { lat: s.lat, lng: s.lon, dist, name: s.name, stationId: String(s.station_id) };
   }
   if (!best) return null;
-  return { lat: best.lat, lng: best.lng, name: best.name, walkMin: Math.max(1, Math.round((best.dist / 5) * 60)) };
+  const ebikes = getEbikeCountFromStatus(bayWheelsStatusMap[best.stationId]);
+  return { lat: best.lat, lng: best.lng, name: best.name, stationId: best.stationId, ebikes, walkMin: Math.max(1, Math.round((best.dist / 5) * 60)) };
 }
 
 function buildInboundEntries(origin, currentTime, firstMileMode) {
@@ -780,6 +782,7 @@ function buildInboundEntries(origin, currentTime, firstMileMode) {
           walkToDock: walkToDock,
           bikeRide: bikeRide,
           dockName: nearestDock ? nearestDock.name : null,
+          dockEbikes: nearestDock ? nearestDock.ebikes : null,
           trainLine: boarding.line,
           trainWait: Math.round(waitTime),
           trainRideTime,
@@ -1167,8 +1170,9 @@ function renderRecommendation(currentTime) {
     if (bestBike) {
       const trainName = TRAIN_LINE_COLORS[bestBike.trainLine].name;
       const walkNote = bestBike.walkMin ? `${bestBike.walkMin}m walk + ${bestBike.rideMin}m ride` : `${bestBike.rideMin}m ride`;
+      const bikeAvail = ebikeAvailability.home !== null ? ` (${ebikeAvailability.home} e-bike${ebikeAvailability.home !== 1 ? 's' : ''} nearby)` : '';
       candidates.push({ min: bestBike.arrivalMin, mode: 'ebike', journey: bestBike,
-        summary: `Pick up e-bike near home, bike to ${bestBike.stationName} (${walkNote}), catch the ${trainName} to ${bestBike.exitStation}. Arrive by ${formatTime(bestBike.arrivalTime)}.`
+        summary: `Pick up e-bike near home, bike to ${bestBike.stationName} (${walkNote}), catch the ${trainName} to ${bestBike.exitStation}. Arrive by ${formatTime(bestBike.arrivalTime)}.${bikeAvail}`
       });
     }
     if (bestWalk) {
@@ -1189,8 +1193,9 @@ function renderRecommendation(currentTime) {
     if (bestBike) {
       const trainName = TRAIN_LINE_COLORS[bestBike.trainLine].name;
       const walkNote = bestBike.walkMin ? `${bestBike.walkMin}m walk + ${bestBike.rideMin}m ride` : `${bestBike.rideMin}m ride`;
+      const bikeAvail = ebikeAvailability.home !== null ? ` (${ebikeAvailability.home} e-bike${ebikeAvailability.home !== 1 ? 's' : ''} nearby)` : '';
       candidates.push({ min: bestBike.trainDepartMin, mode: 'ebike', journey: bestBike,
-        summary: `Pick up e-bike near home, bike to ${bestBike.stationName} (${walkNote}), catch the ${trainName} at ${formatTime(bestBike.departTime)}.`
+        summary: `Pick up e-bike near home, bike to ${bestBike.stationName} (${walkNote}), catch the ${trainName} at ${formatTime(bestBike.departTime)}.${bikeAvail}`
       });
     }
     if (bestWalk) {
@@ -1287,17 +1292,7 @@ function renderArrivals() {
       return;
     }
 
-    // E-bike availability banner for inbound
-    const ebikeBanner = ebikeAvailability.westPortal !== null
-      ? `<div style="padding:10px 14px;margin-bottom:10px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);font-size:13px;display:flex;align-items:center;gap:8px">
-          <span>&#x1f6b2;</span>
-          <span style="color:${ebikeAvailability.westPortal > 0 ? 'var(--green)' : 'var(--red)'}">
-            ${ebikeAvailability.westPortal} e-bike${ebikeAvailability.westPortal !== 1 ? 's' : ''} at West Portal
-          </span>
-          <span style="color:var(--text-dim);font-size:11px;margin-left:auto">Bay Wheels live</span>
-        </div>` : '';
-
-    list.innerHTML = ebikeBanner + inboundEntries.map((e, i) => {
+    list.innerHTML = inboundEntries.map((e, i) => {
       const trainInfo = TRAIN_LINE_COLORS[e.trainLine];
       const trainDepartTime = new Date(currentTime);
       trainDepartTime.setHours(Math.floor(e.trainDepartAbsolute / 60), Math.round(e.trainDepartAbsolute % 60), 0, 0);
@@ -1948,6 +1943,7 @@ function openEbikeModal(entry) {
         <div class="timeline-content">
           <div class="timeline-title">Walk to e-bike dock near home</div>
           <div class="timeline-duration">${walkMin} min walk</div>
+          ${ebikeAvailability.home !== null ? `<div class="timeline-detail">${ebikeAvailability.home} e-bike${ebikeAvailability.home !== 1 ? 's' : ''} nearby</div>` : ''}
         </div>
       </div>
       ` : ''}
@@ -2112,6 +2108,15 @@ function renderInboundRecommendation(origin, currentTime) {
     const e = entries[0];
     const trainName = TRAIN_LINE_COLORS[e.trainLine].name;
     const dockLabel = e.dockName ? ` at ${e.dockName}` : '';
+    // Build availability tags for any e-bike legs
+    const availParts = [];
+    if (mode === 'ebike' && e.dockEbikes !== null) {
+      availParts.push(`${e.dockEbikes} e-bike${e.dockEbikes !== 1 ? 's' : ''} at pickup`);
+    }
+    if (e.lastMileMode === 'ebike' && ebikeAvailability.westPortal !== null) {
+      availParts.push(`${ebikeAvailability.westPortal} at West Portal`);
+    }
+    const availTag = availParts.length > 0 ? ` (${availParts.join(', ')})` : '';
     const firstMileDesc = mode === 'ebike'
       ? `Pick up e-bike${dockLabel}, bike to ${e.boardingStation}`
       : `Walk to ${e.boardingStation} (${e.firstMileTime}m)`;
@@ -2120,7 +2125,7 @@ function renderInboundRecommendation(origin, currentTime) {
       min: e.arrivalMin,
       mode: `${mode}-${e.lastMileMode || 'walk'}`,
       entry: e,
-      summary: `${firstMileDesc}, catch the ${trainName} to ${e.exitStation}, ${lastMileDesc}. Home by ${formatTime(e.arrivalTime)}.`
+      summary: `${firstMileDesc}, catch the ${trainName} to ${e.exitStation}, ${lastMileDesc}. Home by ${formatTime(e.arrivalTime)}.${availTag}`
     });
   }
 
@@ -2174,6 +2179,7 @@ function openInboundModal(entry) {
         <div class="timeline-content">
           <div class="timeline-title">Walk to ${entry.dockName || 'e-bike dock'}</div>
           <div class="timeline-duration">${entry.walkToDock} min walk</div>
+          ${entry.dockEbikes !== null ? `<div class="timeline-detail">${entry.dockEbikes} e-bike${entry.dockEbikes !== 1 ? 's' : ''} available now</div>` : ''}
         </div>
       </div>
       <div class="timeline-step">
