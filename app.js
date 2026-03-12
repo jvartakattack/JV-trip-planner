@@ -692,10 +692,10 @@ function findNearestDock(lat, lng) {
   let best = null;
   for (const s of bayWheelsStationCache) {
     const dist = haversineDistanceRaw(lat, lng, s.lat, s.lon);
-    if (!best || dist < best.dist) best = { lat: s.lat, lng: s.lon, dist };
+    if (!best || dist < best.dist) best = { lat: s.lat, lng: s.lon, dist, name: s.name };
   }
   if (!best) return null;
-  return { lat: best.lat, lng: best.lng, walkMin: Math.max(1, Math.round((best.dist / 5) * 60)) };
+  return { lat: best.lat, lng: best.lng, name: best.name, walkMin: Math.max(1, Math.round((best.dist / 5) * 60)) };
 }
 
 function buildInboundEntries(origin, currentTime, firstMileMode) {
@@ -779,6 +779,7 @@ function buildInboundEntries(origin, currentTime, firstMileMode) {
           firstMileTime,
           walkToDock: walkToDock,
           bikeRide: bikeRide,
+          dockName: nearestDock ? nearestDock.name : null,
           trainLine: boarding.line,
           trainWait: Math.round(waitTime),
           trainRideTime,
@@ -1159,20 +1160,20 @@ function renderRecommendation(currentTime) {
       const busLeaveIn = Math.max(0, bestBus.busEta - (bestBus.walkToStop || 0));
       const busLeaveNote = busLeaveIn <= 0 ? 'Leave now' : `Leave in ${busLeaveIn}m`;
       const trainName = TRAIN_LINE_COLORS[bestBus.trainLine].name;
-      candidates.push({ min: bestBus.arrivalMin, mode: 'bus',
+      candidates.push({ min: bestBus.arrivalMin, mode: 'bus', journey: bestBus,
         summary: `${busLeaveNote} — take the ${bestBus.busRoute} (${bestBus.walkToStop || 0}m walk) to ${bestBus.transferStation}, catch the ${trainName} to ${bestBus.exitStation}. Arrive by ${formatTime(bestBus.arrivalTime)}.`
       });
     }
     if (bestBike) {
       const trainName = TRAIN_LINE_COLORS[bestBike.trainLine].name;
       const walkNote = bestBike.walkMin ? `${bestBike.walkMin}m walk + ${bestBike.rideMin}m ride` : `${bestBike.rideMin}m ride`;
-      candidates.push({ min: bestBike.arrivalMin, mode: 'ebike',
-        summary: `Bike to ${bestBike.stationName} (${walkNote}), catch the ${trainName} to ${bestBike.exitStation}. Arrive by ${formatTime(bestBike.arrivalTime)}.`
+      candidates.push({ min: bestBike.arrivalMin, mode: 'ebike', journey: bestBike,
+        summary: `Pick up e-bike near home, bike to ${bestBike.stationName} (${walkNote}), catch the ${trainName} to ${bestBike.exitStation}. Arrive by ${formatTime(bestBike.arrivalTime)}.`
       });
     }
     if (bestWalk) {
       const trainName = TRAIN_LINE_COLORS[bestWalk.trainLine].name;
-      candidates.push({ min: bestWalk.arrivalMin, mode: 'walk',
+      candidates.push({ min: bestWalk.arrivalMin, mode: 'walk', journey: bestWalk,
         summary: `Walk to ${bestWalk.stationName} (${bestWalk.walkMin}m), catch the ${trainName} to ${bestWalk.exitStation}. Arrive by ${formatTime(bestWalk.arrivalTime)}.`
       });
     }
@@ -1181,20 +1182,20 @@ function renderRecommendation(currentTime) {
       const busLeaveIn = Math.max(0, bestBus.busEta - (bestBus.walkToStop || 0));
       const busLeaveNote = busLeaveIn <= 0 ? 'Leave now' : `Leave in ${busLeaveIn}m`;
       const trainName = TRAIN_LINE_COLORS[bestBus.trainLine].name;
-      candidates.push({ min: bestBus.trainDepartMin, mode: 'bus',
+      candidates.push({ min: bestBus.trainDepartMin, mode: 'bus', journey: bestBus,
         summary: `${busLeaveNote} — take the ${bestBus.busRoute} (${bestBus.walkToStop || 0}m walk) to ${bestBus.transferStation}, catch the ${trainName} at ${formatTime(bestBus.departTime)}.`
       });
     }
     if (bestBike) {
       const trainName = TRAIN_LINE_COLORS[bestBike.trainLine].name;
       const walkNote = bestBike.walkMin ? `${bestBike.walkMin}m walk + ${bestBike.rideMin}m ride` : `${bestBike.rideMin}m ride`;
-      candidates.push({ min: bestBike.trainDepartMin, mode: 'ebike',
-        summary: `Bike to ${bestBike.stationName} (${walkNote}), catch the ${trainName} at ${formatTime(bestBike.departTime)}.`
+      candidates.push({ min: bestBike.trainDepartMin, mode: 'ebike', journey: bestBike,
+        summary: `Pick up e-bike near home, bike to ${bestBike.stationName} (${walkNote}), catch the ${trainName} at ${formatTime(bestBike.departTime)}.`
       });
     }
     if (bestWalk) {
       const trainName = TRAIN_LINE_COLORS[bestWalk.trainLine].name;
-      candidates.push({ min: bestWalk.trainDepartMin, mode: 'walk',
+      candidates.push({ min: bestWalk.trainDepartMin, mode: 'walk', journey: bestWalk,
         summary: `Walk to ${bestWalk.stationName} (${bestWalk.walkMin}m), catch the ${trainName} at ${formatTime(bestWalk.departTime)}.`
       });
     }
@@ -1217,7 +1218,19 @@ function renderRecommendation(currentTime) {
   }
 
   recEl.innerHTML = `<div class="rec-label">Recommended</div><div class="rec-summary">${winner.summary}</div>${detail ? `<div class="rec-detail">${detail}</div>` : ''}`;
+  recEl.style.cursor = 'pointer';
   recEl.classList.remove('hidden');
+  recEl.onclick = () => {
+    const j = winner.journey;
+    if (winner.mode === 'bus') {
+      selectedDestination ? openBusDestModal(j) : openDefaultBusModal(j);
+    } else if (winner.mode === 'ebike') {
+      const stationData = MUNI_STATIONS[j.stationName];
+      openEbikeModal({ ...j, stationCoords: stationData ? { lat: stationData.lat, lng: stationData.lng } : null });
+    } else {
+      openWalkModal(j);
+    }
+  };
 }
 
 function renderAlertsBanner(delays, alerts) {
@@ -1933,7 +1946,7 @@ function openEbikeModal(entry) {
           <div class="timeline-connector"></div>
         </div>
         <div class="timeline-content">
-          <div class="timeline-title">Walk to e-bike dock</div>
+          <div class="timeline-title">Walk to e-bike dock near home</div>
           <div class="timeline-duration">${walkMin} min walk</div>
         </div>
       </div>
@@ -2098,13 +2111,15 @@ function renderInboundRecommendation(origin, currentTime) {
     // The best entry already factors in e-bike last mile if available
     const e = entries[0];
     const trainName = TRAIN_LINE_COLORS[e.trainLine].name;
+    const dockLabel = e.dockName ? ` at ${e.dockName}` : '';
     const firstMileDesc = mode === 'ebike'
-      ? `Bike to ${e.boardingStation}`
+      ? `Pick up e-bike${dockLabel}, bike to ${e.boardingStation}`
       : `Walk to ${e.boardingStation} (${e.firstMileTime}m)`;
     const lastMileDesc = e.lastMileMode === 'ebike' ? 'e-bike home' : 'walk home';
     candidates.push({
       min: e.arrivalMin,
       mode: `${mode}-${e.lastMileMode || 'walk'}`,
+      entry: e,
       summary: `${firstMileDesc}, catch the ${trainName} to ${e.exitStation}, ${lastMileDesc}. Home by ${formatTime(e.arrivalTime)}.`
     });
   }
@@ -2123,7 +2138,11 @@ function renderInboundRecommendation(origin, currentTime) {
   }
 
   recEl.innerHTML = `<div class="rec-label">Recommended</div><div class="rec-summary">${winner.summary}</div>${detail ? `<div class="rec-detail">${detail}</div>` : ''}`;
+  recEl.style.cursor = 'pointer';
   recEl.classList.remove('hidden');
+  recEl.onclick = () => {
+    openInboundModal(winner.entry);
+  };
 }
 
 function openInboundModal(entry) {
@@ -2153,7 +2172,7 @@ function openInboundModal(entry) {
           <div class="timeline-connector"></div>
         </div>
         <div class="timeline-content">
-          <div class="timeline-title">Walk to e-bike dock</div>
+          <div class="timeline-title">Walk to ${entry.dockName || 'e-bike dock'}</div>
           <div class="timeline-duration">${entry.walkToDock} min walk</div>
         </div>
       </div>
