@@ -37,6 +37,8 @@ body {
   padding-bottom: calc(40px + env(safe-area-inset-bottom));
 }
 
+#app.hidden { display: none; }
+
 /* ── Header ──────────────────────────────────────────── */
 header { margin-bottom: 20px; }
 

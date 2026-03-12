@@ -622,23 +622,36 @@ function buildInboundEntries(origin, currentTime, firstMileMode) {
   const nowMin = minutesSinceMidnight(currentTime);
 
   const boardingOptions = findClosestBoardingStation(origin.lat, origin.lng);
-  // Only consider the 3 closest stations to keep it practical
+  // Consider the 6 closest station+line combos
   const nearbyStations = boardingOptions.slice(0, 6);
 
   for (const boarding of nearbyStations) {
     const firstMileTime = firstMileMode === 'walk' ? boarding.walkMin
       : firstMileMode === 'ebike' ? Math.max(boarding.bikeMin, 2) + WALK_TO_DOCK_MIN
-      : boarding.walkMin; // bus tab: walk to station, same as walk for now
+      : boarding.walkMin;
 
     const arriveAtStationMin = nowMin + firstMileTime;
+    const boardingTT = boarding.travelTime[boarding.line];
 
-    // Get next train on this line at this station
-    const train = getNextTrain(boarding.name, boarding.line, arriveAtStationMin, currentTime);
+    // Use reference station schedule (same pattern as outbound code)
+    const scheduledStation = Object.keys(TRAIN_SCHEDULES).find(s =>
+      TRAIN_SCHEDULES[s][boarding.line]
+    );
+    if (!scheduledStation) continue;
+
+    const scheduledStationTT = MUNI_STATIONS[scheduledStation]?.travelTime?.[boarding.line] || 0;
+    // Offset: how many minutes the boarding station is from the reference station
+    const offset = boardingTT - scheduledStationTT;
+
+    // When do we need a train at the *reference* station so it arrives at boarding on time?
+    const refArrivalMin = arriveAtStationMin - offset;
+    const train = getNextTrainDeparture(scheduledStation, boarding.line, refArrivalMin, currentTime);
     if (!train) continue;
 
-    // Only consider trains going TOWARD home (travelTime must be positive = east of WP,
-    // or the station is on the subway trunk headed west)
-    const boardingTT = boarding.travelTime[boarding.line];
+    // When does this train actually reach our boarding station?
+    const trainAtBoardingMin = train.departureMinutes + offset;
+    if (trainAtBoardingMin < arriveAtStationMin) continue;
+    const waitTime = trainAtBoardingMin - arriveAtStationMin;
 
     // Find the best exit station for this line
     for (const [exitName, exitInfo] of Object.entries(INBOUND_EXIT_STATIONS)) {
@@ -646,14 +659,12 @@ function buildInboundEntries(origin, currentTime, firstMileMode) {
       if (!exitStation || !exitStation.lines.includes(boarding.line)) continue;
 
       const exitTT = exitStation.travelTime[boarding.line];
-      // Train ride time: difference in travel times
-      // Positive boardingTT = east of WP, exitTT is 0 (WP) or 0 (Taraval) → ride = boardingTT - exitTT
-      const trainRideTime = Math.abs(boardingTT - exitTT);
+      const trainRideTime = boardingTT - exitTT;
 
-      // Skip if the exit station is FARTHER from WP than boarding (wrong direction)
-      if (boardingTT <= exitTT) continue;
+      // Skip if exit is east of boarding (wrong direction — we're going home/west)
+      if (trainRideTime <= 0) continue;
 
-      const totalTime = firstMileTime + train.waitTime + trainRideTime + exitInfo.walkHome;
+      const totalTime = firstMileTime + waitTime + trainRideTime + exitInfo.walkHome;
 
       const arrivalDate = new Date(currentTime);
       const arrivalMin = nowMin + totalTime;
@@ -665,15 +676,14 @@ function buildInboundEntries(origin, currentTime, firstMileMode) {
         firstMileMode,
         firstMileTime,
         trainLine: boarding.line,
-        trainWait: Math.round(train.waitTime),
+        trainWait: Math.round(waitTime),
         trainRideTime,
-        trainDepartAbsolute: train.departureMinutes,
+        trainDepartAbsolute: trainAtBoardingMin,
         exitStation: exitName,
         walkHome: exitInfo.walkHome,
         totalTime,
         arrivalTime: arrivalDate,
-        arrivalMin,
-        isRealTime: train.isRealTime || false
+        arrivalMin
       });
     }
   }
