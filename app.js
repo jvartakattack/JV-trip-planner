@@ -1148,6 +1148,44 @@ function getBestBusJourney(currentTime, destination) {
   }
 }
 
+function initRecSwipe(recEl) {
+  if (recEl._recSwipeInit) return;
+  recEl._recSwipeInit = true;
+  let sx = 0;
+  recEl.addEventListener('touchstart', e => { sx = e.touches[0].clientX; }, { passive: true });
+  recEl.addEventListener('touchend', e => {
+    const dx = e.changedTouches[0].clientX - sx;
+    const c = recEl._recCards;
+    let idx = recEl._recSlide;
+    if (c && Math.abs(dx) > 40) {
+      if (dx < 0 && idx < c.length - 1) idx++;
+      else if (dx > 0 && idx > 0) idx--;
+      recEl._recSlide = idx;
+      const t = recEl.querySelector('.rec-track');
+      if (t) t.style.transform = `translateX(-${idx * 100}%)`;
+      recEl.querySelectorAll('.rec-dot').forEach((d, i) => d.classList.toggle('active', i === idx));
+      const tabMode = c[idx].winner.mode.split('-')[0];
+      switchToTab(tabMode);
+    }
+  });
+  recEl.addEventListener('click', () => {
+    const c = recEl._recCards;
+    if (!c) return;
+    const w = c[recEl._recSlide].winner;
+    const j = w.journey || w.entry;
+    if (w.mode === 'bus') {
+      selectedDestination ? openBusDestModal(j) : openDefaultBusModal(j);
+    } else if (w.mode === 'ebike') {
+      const stationData = MUNI_STATIONS[j.stationName];
+      openEbikeModal({ ...j, stationCoords: stationData ? { lat: stationData.lat, lng: stationData.lng } : null });
+    } else if (w.entry) {
+      openInboundModal(j);
+    } else {
+      openWalkModal(j);
+    }
+  });
+}
+
 function getOutboundWinner(currentTime) {
   const bestBus = getBestBusJourney(currentTime, selectedDestination);
   const bestBike = getBestBikeJourney(currentTime, selectedDestination);
@@ -1248,43 +1286,12 @@ function renderRecommendation(currentTime) {
   recEl.innerHTML = `<div class="rec-track">${slidesHtml}</div>${dotsHtml}`;
   recEl.classList.remove('hidden');
 
-  // Swipe logic
   const track = recEl.querySelector('.rec-track');
   const dots = recEl.querySelectorAll('.rec-dot');
-  let currentSlide = 0;
 
-  function goToSlide(idx) {
-    currentSlide = idx;
-    track.style.transform = `translateX(-${idx * 100}%)`;
-    dots.forEach((d, i) => d.classList.toggle('active', i === idx));
-    const tabMode = cards[idx].winner.mode.split('-')[0];
-    switchToTab(tabMode);
-  }
-
-  let swipeStartX = 0;
-  recEl.addEventListener('touchstart', e => { swipeStartX = e.touches[0].clientX; }, { passive: true });
-  recEl.addEventListener('touchend', e => {
-    const dx = e.changedTouches[0].clientX - swipeStartX;
-    if (Math.abs(dx) > 40) {
-      if (dx < 0 && currentSlide < cards.length - 1) goToSlide(currentSlide + 1);
-      else if (dx > 0 && currentSlide > 0) goToSlide(currentSlide - 1);
-    }
-  });
-
-  // Tap to open modal
-  recEl.style.cursor = 'pointer';
-  recEl.onclick = () => {
-    const w = cards[currentSlide].winner;
-    const j = w.journey;
-    if (w.mode === 'bus') {
-      selectedDestination ? openBusDestModal(j) : openDefaultBusModal(j);
-    } else if (w.mode === 'ebike') {
-      const stationData = MUNI_STATIONS[j.stationName];
-      openEbikeModal({ ...j, stationCoords: stationData ? { lat: stationData.lat, lng: stationData.lng } : null });
-    } else {
-      openWalkModal(j);
-    }
-  };
+  recEl._recCards = cards;
+  recEl._recSlide = 0;
+  initRecSwipe(recEl);
 
   switchToTab(cards[0].winner.mode);
 }
@@ -2226,32 +2233,9 @@ function renderInboundRecommendation(origin, currentTime) {
   recEl.innerHTML = `<div class="rec-track">${slidesHtml}</div>${dotsHtml}`;
   recEl.classList.remove('hidden');
 
-  const track = recEl.querySelector('.rec-track');
-  const dots = recEl.querySelectorAll('.rec-dot');
-  let currentSlide = 0;
-
-  function goToSlide(idx) {
-    currentSlide = idx;
-    track.style.transform = `translateX(-${idx * 100}%)`;
-    dots.forEach((d, i) => d.classList.toggle('active', i === idx));
-    const tabMode = cards[idx].winner.mode.split('-')[0];
-    switchToTab(tabMode);
-  }
-
-  let swipeStartX = 0;
-  recEl.addEventListener('touchstart', e => { swipeStartX = e.touches[0].clientX; }, { passive: true });
-  recEl.addEventListener('touchend', e => {
-    const dx = e.changedTouches[0].clientX - swipeStartX;
-    if (Math.abs(dx) > 40) {
-      if (dx < 0 && currentSlide < cards.length - 1) goToSlide(currentSlide + 1);
-      else if (dx > 0 && currentSlide > 0) goToSlide(currentSlide - 1);
-    }
-  });
-
-  recEl.style.cursor = 'pointer';
-  recEl.onclick = () => {
-    openInboundModal(cards[currentSlide].winner.entry);
-  };
+  recEl._recCards = cards;
+  recEl._recSlide = 0;
+  initRecSwipe(recEl);
 
   switchToTab(cards[0].winner.mode.split('-')[0]);
 }
@@ -2452,6 +2436,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Refresh real-time data every 30s, then re-render
   async function refreshAndRender() {
+    if (!locationReady) return;
     await Promise.all([refreshLiveData(), refreshEbikeAvailability()]);
     renderArrivals();
   }
@@ -2606,6 +2591,8 @@ document.addEventListener('DOMContentLoaded', () => {
     requestAnimationFrame(frame);
   }
 
+  let locationReady = true;
+
   async function enterApp(direction) {
     activeDirection = direction;
     input.placeholder = direction === 'inbound' ? 'Where are you coming from?' : 'Where are you going?';
@@ -2615,6 +2602,7 @@ document.addEventListener('DOMContentLoaded', () => {
       app.classList.remove('hidden');
 
       if (direction === 'inbound') {
+        locationReady = false;
         document.getElementById('arrivals-list').innerHTML = '<div class="empty-state">Detecting your location...</div>';
         try {
           const [pos] = await Promise.all([getCurrentPosition(), refreshEbikeAvailability()]);
@@ -2624,6 +2612,7 @@ document.addEventListener('DOMContentLoaded', () => {
         } catch (err) {
           document.getElementById('arrivals-list').innerHTML = '<div class="empty-state">Could not detect location. Search above.</div>';
         }
+        locationReady = true;
       }
       await refreshAndRender();
     };
