@@ -2537,6 +2537,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
   backBtn.addEventListener('click', () => {
     app.classList.add('hidden');
+    landing.style.opacity = '';
+    landing.style.transition = '';
     landing.classList.remove('hidden');
     selectedDestination = null;
     input.value = '';
