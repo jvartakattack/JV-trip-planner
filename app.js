@@ -1,0 +1,1908 @@
+// ── Configuration ───────────────────────────────────────────────────────────
+
+const HOME_STOP = { lat: 37.7510, lng: -122.4786, name: '2020 20th Ave' };
+
+// NextBus/Umo stop tags for real-time predictions (no API key needed)
+const NEXTBUS_AGENCY = 'sf-muni';
+const NEXTBUS_STOPS = {
+  // route|stopTag pairs for predictionsForMultiStops
+  bus28: { route: '28', stopTag: '6298' },   // 28 at 19th & Quintara
+  bus48: { route: '48', stopTag: '6298' },   // 48 at Quintara & 19th
+  trainK: { route: 'KT', stopTag: '7218' },  // K at West Portal
+  trainL_wp: { route: 'L', stopTag: '7218' }, // L at West Portal
+  trainM: { route: 'M', stopTag: '7218' },    // M at West Portal
+  trainL_tav: { route: 'L', stopTag: '6297' } // L at Taraval & 19th
+};
+
+const WALK_TO_BUS_STOP_MIN = 3;
+
+const BUS_ROUTES = {
+  '28': {
+    name: '28',
+    color: '#d4a017',
+    cssClass: 'r28',
+    dotClass: 'bus',
+    direction: '19th Ave Inbound',
+    stopCoords: { lat: 37.7462, lng: -122.4756 },
+    transferStation: 'West Portal',
+    transferCoords: { lat: 37.7408, lng: -122.4661 },
+    walkToStop: WALK_TO_BUS_STOP_MIN,
+    timeToTransfer: 8,
+    trainLines: ['K', 'L', 'M'],
+    schedule: {
+      weekday: {
+        start: 300, end: 1500, // 5:00 AM – 1:00 AM (minutes from midnight)
+        peakFreq: 8, offPeakFreq: 12,
+        peakWindows: [[420, 540], [960, 1140]] // 7-9 AM, 4-7 PM
+      },
+      weekend: { start: 360, end: 1500, freq: 15 }
+    }
+  },
+  '48': {
+    name: '48',
+    color: '#7b1fa2',
+    cssClass: 'r48',
+    dotClass: 'bus-48',
+    direction: 'Quintara / 24th St',
+    stopCoords: { lat: 37.7462, lng: -122.4756 },
+    transferStation: 'Taraval & 19th',
+    transferCoords: { lat: 37.7432, lng: -122.4755 },
+    walkToStop: WALK_TO_BUS_STOP_MIN,
+    timeToTransfer: 3,
+    trainLines: ['L'],
+    schedule: {
+      weekday: {
+        start: 330, end: 1470, // 5:30 AM – 12:30 AM
+        peakFreq: 10, offPeakFreq: 15,
+        peakWindows: [[420, 540], [960, 1140]]
+      },
+      weekend: { start: 360, end: 1470, freq: 20 }
+    }
+  }
+};
+
+const TRAIN_LINE_COLORS = {
+  K: { color: '#009bdf', cssClass: 'k', name: 'K Ingleside' },
+  L: { color: '#9b59b6', cssClass: 'l', name: 'L Taraval' },
+  M: { color: '#4caf50', cssClass: 'm', name: 'M Ocean View' }
+};
+
+const TRAIN_SCHEDULES = {
+  'West Portal': {
+    K: { weekday: { peakFreq: 8, offPeakFreq: 12 }, weekend: { freq: 15 } },
+    L: { weekday: { peakFreq: 9, offPeakFreq: 12 }, weekend: { freq: 15 } },
+    M: { weekday: { peakFreq: 8, offPeakFreq: 12 }, weekend: { freq: 15 } }
+  },
+  'Taraval & 19th': {
+    L: { weekday: { peakFreq: 9, offPeakFreq: 12 }, weekend: { freq: 15 } }
+  }
+};
+
+// Muni Metro stations — shared subway trunk + branch-specific surface stops
+// travelTime = minutes from West Portal (or Taraval & 19th for L surface stops)
+const MUNI_STATIONS = {
+  // L Taraval surface stops (west of West Portal)
+  'Taraval & 46th':    { lat: 37.7432, lng: -122.5040, lines: ['L'], travelTime: { L: -12 } },
+  'Taraval & 40th':    { lat: 37.7432, lng: -122.4960, lines: ['L'], travelTime: { L: -9 } },
+  'Taraval & 32nd':    { lat: 37.7432, lng: -122.4880, lines: ['L'], travelTime: { L: -6 } },
+  'Taraval & 28th':    { lat: 37.7432, lng: -122.4840, lines: ['L'], travelTime: { L: -4 } },
+  'Taraval & 24th':    { lat: 37.7432, lng: -122.4810, lines: ['L'], travelTime: { L: -3 } },
+  'Taraval & 19th':    { lat: 37.7432, lng: -122.4755, lines: ['L'], travelTime: { L: 0 } },
+  'Taraval & 15th':    { lat: 37.7432, lng: -122.4710, lines: ['L'], travelTime: { L: 2 } },
+
+  // Shared subway trunk
+  'West Portal':       { lat: 37.7408, lng: -122.4661, lines: ['K','L','M'], travelTime: { K: 0, L: 4, M: 0 } },
+  'Forest Hill':       { lat: 37.7480, lng: -122.4590, lines: ['K','L','M'], travelTime: { K: 3, L: 7, M: 3 } },
+  'Castro':            { lat: 37.7625, lng: -122.4351, lines: ['K','L','M'], travelTime: { K: 7, L: 11, M: 7 } },
+  'Church':            { lat: 37.7672, lng: -122.4290, lines: ['K','L','M'], travelTime: { K: 9, L: 13, M: 9 } },
+  'Van Ness':          { lat: 37.7752, lng: -122.4193, lines: ['K','L','M'], travelTime: { K: 11, L: 15, M: 11 } },
+  'Civic Center':      { lat: 37.7797, lng: -122.4140, lines: ['K','L','M'], travelTime: { K: 13, L: 17, M: 13 } },
+  'Powell':            { lat: 37.7842, lng: -122.4080, lines: ['K','L','M'], travelTime: { K: 15, L: 19, M: 15 } },
+  'Montgomery':        { lat: 37.7894, lng: -122.4017, lines: ['K','L','M'], travelTime: { K: 17, L: 21, M: 17 } },
+  'Embarcadero':       { lat: 37.7930, lng: -122.3970, lines: ['K','L','M'], travelTime: { K: 19, L: 23, M: 19 } },
+
+  // K Ingleside branch (south of West Portal)
+  'St Francis Circle': { lat: 37.7348, lng: -122.4690, lines: ['K'], travelTime: { K: -3 } },
+  'Balboa Park':       { lat: 37.7218, lng: -122.4474, lines: ['K'], travelTime: { K: -7 } },
+
+  // M Ocean View branch (south of West Portal)
+  'SF State':          { lat: 37.7220, lng: -122.4830, lines: ['M'], travelTime: { M: -8 } },
+  'Stonestown':        { lat: 37.7282, lng: -122.4760, lines: ['M'], travelTime: { M: -5 } }
+};
+
+
+// E-bike: walk 7min to nearest dock, then ride to a Muni station
+const WALK_TO_DOCK_MIN = 7;
+const EBIKE_STATIONS = [
+  { name: 'Taraval & 19th', ...MUNI_STATIONS['Taraval & 19th'], rideMin: 2, walkMin: WALK_TO_DOCK_MIN },
+  { name: 'West Portal',    ...MUNI_STATIONS['West Portal'],    rideMin: 5, walkMin: WALK_TO_DOCK_MIN }
+];
+
+// Walk: only Taraval & 19th is walkable (~12 min from home)
+const WALK_STATION = {
+  name: 'Taraval & 19th',
+  ...MUNI_STATIONS['Taraval & 19th'],
+  walkMin: 12
+};
+
+// Haversine without depending on the function defined below (hoisted for EBIKE_STATIONS init)
+function haversineDistanceRaw(lat1, lng1, lat2, lng2) {
+  const R = 6371;
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLng = (lng2 - lng1) * Math.PI / 180;
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+    Math.sin(dLng / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+
+// ── Utility Functions ───────────────────────────────────────────────────────
+
+function now() { return new Date(); }
+
+function minutesSinceMidnight(date) {
+  return date.getHours() * 60 + date.getMinutes();
+}
+
+function isWeekend(date) {
+  const day = date.getDay();
+  return day === 0 || day === 6;
+}
+
+function isPeakHour(minutesFromMidnight, peakWindows) {
+  return peakWindows.some(([start, end]) =>
+    minutesFromMidnight >= start && minutesFromMidnight < end
+  );
+}
+
+function haversineDistance(lat1, lng1, lat2, lng2) {
+  const R = 6371;
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLng = (lng2 - lng1) * Math.PI / 180;
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+    Math.sin(dLng / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+function formatTime(date) {
+  return date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+}
+
+function formatMinutes(min) {
+  if (min < 1) return 'now';
+  if (min < 60) return `${Math.round(min)} min`;
+  const h = Math.floor(min / 60);
+  const m = Math.round(min % 60);
+  return m > 0 ? `${h}h ${m}m` : `${h}h`;
+}
+
+function formatAddress(display) {
+  // Clean up Nominatim address ranges like "336;338;340"
+  return display.replace(/(\d+);[\d;]+/g, (_, first) => first);
+}
+
+
+// ── Real-Time Data Layer (NextBus/Umo API — no key needed) ──────────────────
+
+let liveData = { bus: {}, train: {}, alerts: {}, lastFetch: 0, active: false, error: false };
+
+const NEXTBUS_BASE = 'https://retro.umoiq.com/service/publicXMLFeed';
+
+async function fetchNextBusPredictions() {
+  // Batch all stops in one request using predictionsForMultiStops
+  const stops = Object.values(NEXTBUS_STOPS)
+    .map(s => `stops=${s.route}|${s.stopTag}`)
+    .join('&');
+  const url = `${NEXTBUS_BASE}?command=predictionsForMultiStops&a=${NEXTBUS_AGENCY}&${stops}`;
+
+  const resp = await fetch(url);
+  if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+  const text = await resp.text();
+
+  // Parse XML response
+  const parser = new DOMParser();
+  const xml = parser.parseFromString(text, 'text/xml');
+  return xml;
+}
+
+function parseNextBusXml(xml) {
+  const results = { bus: {}, train: {} };
+  const now = new Date();
+  const predictions = xml.querySelectorAll('predictions');
+
+  for (const pred of predictions) {
+    const routeTag = pred.getAttribute('routeTag');
+    const directions = pred.querySelectorAll('direction');
+
+    const arrivals = [];
+    for (const dir of directions) {
+      for (const p of dir.querySelectorAll('prediction')) {
+        const epochMs = parseInt(p.getAttribute('epochTime'));
+        const departureTime = new Date(epochMs);
+        const etaMinutes = Math.max(0, parseInt(p.getAttribute('minutes')));
+        arrivals.push({ departureTime, etaMinutes, isRealTime: true });
+      }
+    }
+    arrivals.sort((a, b) => a.etaMinutes - b.etaMinutes);
+
+    // Map route tags to our data structure
+    if (routeTag === '28') {
+      results.bus['28'] = arrivals;
+    } else if (routeTag === '48') {
+      results.bus['48'] = arrivals;
+    } else if (routeTag === 'KT') {
+      if (!results.train['West Portal']) results.train['West Portal'] = {};
+      results.train['West Portal'].K = arrivals;
+    } else if (routeTag === 'L') {
+      // L serves both West Portal and Taraval & 19th — split by stop tag
+      // The XML has a stopTag attribute on each prediction element
+      const wpArrivals = [];
+      const tavArrivals = [];
+      for (const dir of directions) {
+        for (const p of dir.querySelectorAll('prediction')) {
+          const stopTag = p.getAttribute('stopTag') || pred.getAttribute('stopTag');
+          const epochMs = parseInt(p.getAttribute('epochTime'));
+          const departureTime = new Date(epochMs);
+          const etaMinutes = Math.max(0, parseInt(p.getAttribute('minutes')));
+          const entry = { departureTime, etaMinutes, isRealTime: true };
+
+          if (stopTag === NEXTBUS_STOPS.trainL_wp.stopTag) {
+            wpArrivals.push(entry);
+          } else if (stopTag === NEXTBUS_STOPS.trainL_tav.stopTag) {
+            tavArrivals.push(entry);
+          } else {
+            // If we can't distinguish, add to both
+            wpArrivals.push(entry);
+            tavArrivals.push(entry);
+          }
+        }
+      }
+      if (!results.train['West Portal']) results.train['West Portal'] = {};
+      results.train['West Portal'].L = wpArrivals.sort((a, b) => a.etaMinutes - b.etaMinutes);
+      if (!results.train['Taraval & 19th']) results.train['Taraval & 19th'] = {};
+      results.train['Taraval & 19th'].L = tavArrivals.sort((a, b) => a.etaMinutes - b.etaMinutes);
+    } else if (routeTag === 'M') {
+      if (!results.train['West Portal']) results.train['West Portal'] = {};
+      results.train['West Portal'].M = arrivals;
+    }
+  }
+
+  return results;
+}
+
+async function fetchNextBusMessages() {
+  const routes = ['28', '48', 'KT', 'L', 'M'];
+  const alerts = {};
+
+  await Promise.all(routes.map(async (route) => {
+    try {
+      const url = `${NEXTBUS_BASE}?command=messages&a=${NEXTBUS_AGENCY}&r=${route}`;
+      const resp = await fetch(url);
+      if (!resp.ok) return;
+      const text = await resp.text();
+      const parser = new DOMParser();
+      const xml = parser.parseFromString(text, 'text/xml');
+
+      const messages = [];
+      for (const msg of xml.querySelectorAll('message')) {
+        const priority = msg.getAttribute('priority') || 'Normal';
+        const textEl = msg.querySelector('text');
+        if (textEl?.textContent) {
+          messages.push({ text: textEl.textContent.trim(), priority });
+        }
+      }
+      if (messages.length > 0) {
+        // Map NextBus route tags to our display names
+        const displayRoute = route === 'KT' ? 'K' : route;
+        alerts[displayRoute] = messages;
+      }
+    } catch { /* ignore individual route failures */ }
+  }));
+
+  return alerts;
+}
+
+// Detect delays by comparing real-time gaps to expected frequency
+function detectGapDelays(currentTime) {
+  const delays = {};
+  const weekend = isWeekend(currentTime);
+  const nowMin = minutesSinceMidnight(currentTime);
+
+  // Check bus routes
+  for (const [name, route] of Object.entries(BUS_ROUTES)) {
+    const live = liveData.bus[name];
+    if (!live || live.length < 1) continue;
+    const sched = weekend ? route.schedule.weekend : route.schedule.weekday;
+    if (!sched) continue;
+    const expectedFreq = sched.freq || (isPeakHour(nowMin, sched.peakWindows || []) ? sched.peakFreq : sched.offPeakFreq);
+
+    // If next bus is more than 1.5x the expected frequency away, flag as delayed
+    const nextEta = live[0].etaMinutes;
+    if (nextEta > expectedFreq * 1.5) {
+      delays[name] = { minutesLate: Math.round(nextEta - expectedFreq), type: 'gap' };
+    }
+  }
+
+  // Check train lines
+  for (const [station, lines] of Object.entries(liveData.train)) {
+    for (const [line, preds] of Object.entries(lines)) {
+      if (!preds || preds.length < 1) continue;
+      const schedStation = TRAIN_SCHEDULES[station]?.[line];
+      if (!schedStation) continue;
+      const sched = weekend ? schedStation.weekend : schedStation.weekday;
+      const expectedFreq = sched.freq || (isPeakHour(nowMin, [[420, 540], [960, 1140]]) ? sched.peakFreq : sched.offPeakFreq);
+
+      const nextEta = preds[0].etaMinutes;
+      if (nextEta > expectedFreq * 1.5) {
+        delays[line] = { minutesLate: Math.round(nextEta - expectedFreq), type: 'gap' };
+      }
+    }
+  }
+
+  return delays;
+}
+
+async function refreshLiveData() {
+  const stale = Date.now() - liveData.lastFetch > 25000;
+  if (!stale && liveData.active) return;
+
+  try {
+    const [xml, alerts] = await Promise.all([
+      fetchNextBusPredictions(),
+      fetchNextBusMessages()
+    ]);
+    const parsed = parseNextBusXml(xml);
+    liveData.bus = parsed.bus;
+    liveData.train = parsed.train;
+    liveData.alerts = alerts;
+    liveData.active = true;
+    liveData.error = false;
+    liveData.lastFetch = Date.now();
+  } catch (e) {
+    console.warn('NextBus API error:', e.message);
+    liveData.error = true;
+    liveData.active = false;
+  }
+
+  updateLiveBadge();
+}
+
+function updateLiveBadge() {
+  const badge = document.getElementById('live-badge');
+  if (!badge) return;
+  if (liveData.active) {
+    badge.textContent = 'LIVE';
+    badge.className = 'live-badge';
+  } else if (liveData.error) {
+    badge.textContent = 'OFFLINE';
+    badge.className = 'live-badge error';
+  } else {
+    badge.className = 'live-badge hidden';
+  }
+}
+
+// Get real-time bus arrivals, falling back to schedule
+function getArrivals(route, currentTime, count = 8) {
+  const live = liveData.bus[route.name];
+  if (live && live.length > 0) {
+    return live.slice(0, count).map(p => ({
+      departureTime: p.departureTime,
+      etaMinutes: p.etaMinutes,
+      isRealTime: p.isRealTime
+    }));
+  }
+  return calculateScheduledArrivals(route, currentTime, count).map(a => ({
+    ...a, isRealTime: false
+  }));
+}
+
+// Get real-time train departure, falling back to schedule
+function getNextTrain(station, line, afterMinutes, currentTime) {
+  const stationData = liveData.train[station];
+  const livePredictions = stationData?.[line];
+
+  if (livePredictions && livePredictions.length > 0) {
+    const nowMin = minutesSinceMidnight(currentTime);
+    for (const p of livePredictions) {
+      const trainMin = nowMin + p.etaMinutes;
+      if (trainMin >= afterMinutes) {
+        return {
+          departureMinutes: trainMin,
+          waitTime: Math.max(0, trainMin - afterMinutes),
+          frequency: null,
+          isRealTime: p.isRealTime
+        };
+      }
+    }
+  }
+
+  const sched = getNextTrainDeparture(station, line, afterMinutes, currentTime);
+  return sched ? { ...sched, isRealTime: false } : null;
+}
+
+
+// ── Schedule Engine (fallback) ──────────────────────────────────────────────
+
+function calculateScheduledArrivals(route, currentTime, count = 8) {
+  const weekend = isWeekend(currentTime);
+  const sched = weekend ? route.schedule.weekend : route.schedule.weekday;
+  if (!sched) return []; // no service (e.g. 28R on weekends)
+
+  const nowMin = minutesSinceMidnight(currentTime);
+  const arrivals = [];
+  let t = sched.start;
+
+  // Walk through the schedule generating departure times
+  while (t <= sched.end && arrivals.length < count * 3) {
+    let freq;
+    if (sched.freq) {
+      freq = sched.freq;
+    } else {
+      freq = isPeakHour(t, sched.peakWindows) ? sched.peakFreq : sched.offPeakFreq;
+    }
+
+    if (t >= nowMin) {
+      arrivals.push(t);
+    }
+    t += freq;
+  }
+
+  return arrivals.slice(0, count).map(mins => {
+    const arrivalDate = new Date(currentTime);
+    arrivalDate.setHours(Math.floor(mins / 60), mins % 60, 0, 0);
+    const etaMin = (mins - nowMin);
+    return { departureTime: arrivalDate, etaMinutes: Math.max(0, etaMin) };
+  });
+}
+
+
+// ── Journey Planner ─────────────────────────────────────────────────────────
+
+function findClosestStation(destLat, destLng, trainLines) {
+  let closest = null;
+  let minDist = Infinity;
+
+  for (const [name, station] of Object.entries(MUNI_STATIONS)) {
+    // Only consider stations on lines available from the transfer station
+    const matchingLine = station.lines.find(l => trainLines.includes(l));
+    if (!matchingLine) continue;
+
+    const dist = haversineDistance(destLat, destLng, station.lat, station.lng);
+    if (dist < minDist) {
+      minDist = dist;
+      closest = { name, ...station, line: matchingLine, distanceKm: dist };
+    }
+  }
+  return closest;
+}
+
+function getNextTrainDeparture(station, line, afterMinutes, currentTime) {
+  const weekend = isWeekend(currentTime);
+  const schedules = TRAIN_SCHEDULES[station];
+  if (!schedules || !schedules[line]) return null;
+
+  const sched = weekend ? schedules[line].weekend : schedules[line].weekday;
+  const freq = sched.freq || (isPeakHour(afterMinutes, [[420, 540], [960, 1140]])
+    ? sched.peakFreq : sched.offPeakFreq);
+
+  // Next train after arrival: round up to next departure
+  const waitTime = freq - (afterMinutes % freq);
+  const departMin = afterMinutes + (waitTime === freq ? 0 : waitTime);
+
+  return { departureMinutes: departMin, waitTime: Math.min(waitTime, freq), frequency: freq };
+}
+
+function planJourney(route, busArrival, destination, currentTime) {
+  const walkToStop = route.walkToStop || 0;
+  const busEta = busArrival.etaMinutes;
+  const busArrivalMin = minutesSinceMidnight(currentTime) + busEta;
+
+  // Time bus arrives at transfer station
+  const transferArrivalMin = busArrivalMin + route.timeToTransfer;
+
+  // Find closest station to destination
+  const closestStation = findClosestStation(destination.lat, destination.lng, route.trainLines);
+  if (!closestStation) return null;
+
+  // Find next train after arriving at transfer (real-time or schedule)
+  const train = getNextTrain(
+    route.transferStation, closestStation.line, transferArrivalMin, currentTime
+  );
+  if (!train) return null;
+
+  // Travel time on train from transfer station to exit station
+  const transferStationTravelTime = MUNI_STATIONS[route.transferStation]?.travelTime?.[closestStation.line] || 0;
+  const exitStationTravelTime = closestStation.travelTime[closestStation.line];
+  const trainRideTime = Math.abs(exitStationTravelTime - transferStationTravelTime);
+
+  // Walking time from exit station to destination (~5 km/h average walking speed)
+  const walkTimeMin = Math.round((closestStation.distanceKm / 5) * 60);
+
+  // Total journey time: walk to stop + bus ride + train wait + train ride (excludes walk at destination)
+  const totalTime = walkToStop + route.timeToTransfer + train.waitTime + trainRideTime;
+
+  // Arrival at exit station as Date
+  const arrivalDate = new Date(currentTime);
+  const arrivalMin = minutesSinceMidnight(currentTime) + busEta + totalTime;
+  arrivalDate.setHours(Math.floor(arrivalMin / 60), Math.round(arrivalMin % 60), 0, 0);
+
+  return {
+    busRoute: route.name,
+    walkToStop,
+    busEta,
+    busDeparture: busArrival.departureTime,
+    transferStation: route.transferStation,
+    busToTransferTime: route.timeToTransfer,
+    trainLine: closestStation.line,
+    trainWait: train.waitTime,
+    trainDepartureMin: train.departureMinutes,
+    trainRideTime,
+    exitStation: closestStation.name,
+    walkTime: walkTimeMin,
+    totalTime,
+    arrivalTime: arrivalDate,
+    // Coords for map
+    busPickup: route.stopCoords,
+    transferCoords: route.transferCoords,
+    exitCoords: { lat: closestStation.lat, lng: closestStation.lng },
+    destCoords: { lat: destination.lat, lng: destination.lng }
+  };
+}
+
+
+// ── Search (Nominatim) ─────────────────────────────────────────────────────
+
+let searchTimeout = null;
+
+async function searchDestination(query) {
+  if (query.length < 3) return [];
+  const url = `https://nominatim.openstreetmap.org/search?` +
+    `q=${encodeURIComponent(query + ', San Francisco, CA')}` +
+    `&format=json&addressdetails=1&limit=6&bounded=1` +
+    `&viewbox=-122.52,37.81,-122.35,37.70`;
+
+  try {
+    const resp = await fetch(url, {
+      headers: { 'Accept-Language': 'en', 'User-Agent': 'SFTransitBoard/1.0' }
+    });
+    const results = await resp.json();
+    return results.map(r => {
+      const display = formatAddress(r.display_name);
+      // Prefer the POI/station name over the street name
+      let short;
+      if (r.name && r.name !== r.address?.road) {
+        // Use the actual name for stations, landmarks, businesses
+        short = r.name;
+      } else if (r.address?.road) {
+        short = `${r.address.house_number || ''} ${r.address.road}`.trim();
+      } else {
+        short = display.split(',')[0];
+      }
+      // Add neighborhood/city context
+      const context = [r.address?.neighbourhood, r.address?.suburb, r.address?.city_district]
+        .filter(Boolean)[0] || '';
+      return {
+        display,
+        short,
+        context,
+        lat: parseFloat(r.lat),
+        lng: parseFloat(r.lon)
+      };
+    });
+  } catch {
+    return [];
+  }
+}
+
+
+// ── UI Rendering ────────────────────────────────────────────────────────────
+
+let selectedDestination = null;
+let journeys = [];
+let mapInstance = null;
+let activeTab = 'bus';
+
+function updateClock() {
+  const el = document.getElementById('clock');
+  el.textContent = now().toLocaleTimeString('en-US', {
+    hour: 'numeric', minute: '2-digit', second: '2-digit'
+  });
+}
+
+function buildDefaultEntries(currentTime) {
+  const entries = [];
+  const nowMin = minutesSinceMidnight(currentTime);
+
+  for (const [key, route] of Object.entries(BUS_ROUTES)) {
+    const walkToStop = route.walkToStop || 0;
+    const arrivals = getArrivals(route, currentTime, 6);
+    for (const arrival of arrivals) {
+      const busArrivalMin = nowMin + arrival.etaMinutes;
+      const transferArrivalMin = busArrivalMin + route.timeToTransfer;
+
+      let bestTrain = null;
+      for (const line of route.trainLines) {
+        const train = getNextTrain(
+          route.transferStation, line, transferArrivalMin, currentTime
+        );
+        if (!train) continue;
+        if (!bestTrain || train.departureMinutes < bestTrain.departureMinutes) {
+          bestTrain = { ...train, line };
+        }
+      }
+      if (!bestTrain) continue;
+
+      // Time remaining before you must leave the house (busEta minus walkToStop)
+      const leaveIn = Math.max(0, arrival.etaMinutes - walkToStop);
+
+      entries.push({
+        busRoute: route.name,
+        walkToStop,
+        busEta: arrival.etaMinutes,
+        leaveIn,
+        busDeparture: arrival.departureTime,
+        transferStation: route.transferStation,
+        busToTransferTime: route.timeToTransfer,
+        trainLine: bestTrain.line,
+        trainWait: bestTrain.waitTime,
+        trainDepartureMin: bestTrain.departureMinutes,
+        availableLines: route.trainLines,
+        trainDepartAbsolute: bestTrain.departureMinutes,
+        isRealTime: arrival.isRealTime || bestTrain.isRealTime
+      });
+    }
+  }
+
+  entries.sort((a, b) => a.trainDepartAbsolute - b.trainDepartAbsolute);
+  return entries.slice(0, 12);
+}
+
+function buildEbikeEntries(currentTime) {
+  const entries = [];
+  const nowMin = minutesSinceMidnight(currentTime);
+
+  for (const station of EBIKE_STATIONS) {
+    const walkMin = station.walkMin || 0;
+    const arrivalAtStationMin = nowMin + walkMin + station.rideMin;
+
+    for (const line of station.lines) {
+      // Try real-time train data first, then fall back to schedule
+      const train = getNextTrain(station.name, line, arrivalAtStationMin, currentTime);
+      if (!train) continue;
+
+      // For real-time data, train.departureMinutes is already absolute
+      // For schedule fallback via getNextTrain → getNextTrainDeparture, it's also absolute
+      // but may need offset if station differs from scheduled station
+      let trainAtThisStation = train.departureMinutes;
+
+      if (!train.isRealTime) {
+        // Schedule fallback: adjust for station position on the line
+        const scheduledStation = Object.keys(TRAIN_SCHEDULES).find(s =>
+          TRAIN_SCHEDULES[s][line]
+        );
+        if (scheduledStation && scheduledStation !== station.name) {
+          const scheduledTT = MUNI_STATIONS[scheduledStation]?.travelTime?.[line] || 0;
+          const stationTT = station.travelTime[line];
+          trainAtThisStation = train.departureMinutes + (stationTT - scheduledTT);
+        }
+      }
+
+      if (trainAtThisStation < arrivalAtStationMin) continue;
+      const waitAtStation = trainAtThisStation - arrivalAtStationMin;
+
+      entries.push({
+        stationName: station.name,
+        stationCoords: { lat: station.lat, lng: station.lng },
+        walkMin,
+        rideMin: station.rideMin,
+        trainLine: line,
+        trainWait: Math.round(waitAtStation),
+        trainDepartAbsolute: trainAtThisStation,
+        availableLines: station.lines,
+        isRealTime: train.isRealTime
+      });
+    }
+  }
+
+  // Sort by earliest train departure, deduplicate by station+line keeping only the soonest
+  entries.sort((a, b) => a.trainDepartAbsolute - b.trainDepartAbsolute);
+
+  const seen = new Set();
+  const deduped = [];
+  for (const e of entries) {
+    const key = `${e.stationName}|${e.trainLine}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    deduped.push(e);
+  }
+
+  return deduped.slice(0, 12);
+}
+
+function buildWalkEntries(currentTime) {
+  const entries = [];
+  const nowMin = minutesSinceMidnight(currentTime);
+  const station = WALK_STATION;
+  const arrivalAtStationMin = nowMin + station.walkMin;
+
+  for (const line of station.lines) {
+    const train = getNextTrain(station.name, line, arrivalAtStationMin, currentTime);
+    if (!train) continue;
+
+    let trainAtThisStation = train.departureMinutes;
+
+    if (!train.isRealTime) {
+      const scheduledStation = Object.keys(TRAIN_SCHEDULES).find(s =>
+        TRAIN_SCHEDULES[s][line]
+      );
+      if (scheduledStation && scheduledStation !== station.name) {
+        const scheduledTT = MUNI_STATIONS[scheduledStation]?.travelTime?.[line] || 0;
+        const stationTT = station.travelTime[line];
+        trainAtThisStation = train.departureMinutes + (stationTT - scheduledTT);
+      }
+    }
+
+    if (trainAtThisStation < arrivalAtStationMin) continue;
+    const waitAtStation = trainAtThisStation - arrivalAtStationMin;
+
+    entries.push({
+      stationName: station.name,
+      stationCoords: { lat: station.lat, lng: station.lng },
+      walkMin: station.walkMin,
+      trainLine: line,
+      trainWait: Math.round(waitAtStation),
+      trainDepartAbsolute: trainAtThisStation,
+      isRealTime: train.isRealTime
+    });
+  }
+
+  entries.sort((a, b) => a.trainDepartAbsolute - b.trainDepartAbsolute);
+  return entries.slice(0, 12);
+}
+
+function getBestWalkJourney(currentTime, destination) {
+  const nowMin = minutesSinceMidnight(currentTime);
+  const station = WALK_STATION;
+  const arrivalAtStationMin = nowMin + station.walkMin;
+  let best = null;
+
+  for (const line of station.lines) {
+    const scheduledStation = Object.keys(TRAIN_SCHEDULES).find(s => TRAIN_SCHEDULES[s][line]);
+    if (!scheduledStation) continue;
+    const train = getNextTrainDeparture(scheduledStation, line, arrivalAtStationMin, currentTime);
+    if (!train) continue;
+
+    const scheduledStationTT = MUNI_STATIONS[scheduledStation]?.travelTime?.[line] || 0;
+    const stationTT = MUNI_STATIONS[station.name]?.travelTime?.[line] || 0;
+    const offset = stationTT - scheduledStationTT;
+    const trainAtStation = train.departureMinutes + offset;
+    if (trainAtStation < arrivalAtStationMin) continue;
+    const waitAtStation = trainAtStation - arrivalAtStationMin;
+
+    if (destination) {
+      const exitStation = findClosestStation(destination.lat, destination.lng, [line]);
+      if (!exitStation) continue;
+      const trainRideTime = Math.abs(exitStation.travelTime[line] - stationTT);
+      const totalTime = station.walkMin + waitAtStation + trainRideTime;
+      const arrivalMin = nowMin + totalTime;
+      const arrivalDate = new Date(currentTime);
+      arrivalDate.setHours(Math.floor(arrivalMin / 60), Math.round(arrivalMin % 60), 0, 0);
+      if (!best || arrivalMin < best.arrivalMin) {
+        best = { stationName: station.name, walkMin: station.walkMin, trainLine: line, exitStation: exitStation.name, trainRideTime, totalTime, arrivalMin, arrivalTime: arrivalDate, trainWait: Math.round(waitAtStation) };
+      }
+    } else {
+      if (!best || trainAtStation < best.trainDepartMin) {
+        const departTime = new Date(currentTime);
+        departTime.setHours(Math.floor(trainAtStation / 60), Math.round(trainAtStation % 60), 0, 0);
+        best = { stationName: station.name, walkMin: station.walkMin, trainLine: line, trainDepartMin: trainAtStation, departTime, trainWait: Math.round(waitAtStation) };
+      }
+    }
+  }
+  return best;
+}
+
+function getBestBikeJourney(currentTime, destination) {
+  const nowMin = minutesSinceMidnight(currentTime);
+  let best = null;
+
+  for (const station of EBIKE_STATIONS) {
+    const walkMin = station.walkMin || 0;
+    const arrivalAtStationMin = nowMin + walkMin + station.rideMin;
+    for (const line of station.lines) {
+      const scheduledStation = Object.keys(TRAIN_SCHEDULES).find(s => TRAIN_SCHEDULES[s][line]);
+      if (!scheduledStation) continue;
+      const train = getNextTrainDeparture(scheduledStation, line, arrivalAtStationMin, currentTime);
+      if (!train) continue;
+
+      const scheduledStationTT = MUNI_STATIONS[scheduledStation]?.travelTime?.[line] || 0;
+      const stationTT = MUNI_STATIONS[station.name]?.travelTime?.[line] || 0;
+      const offset = stationTT - scheduledStationTT;
+      const trainAtStation = train.departureMinutes + offset;
+      if (trainAtStation < arrivalAtStationMin) continue;
+      const waitAtStation = trainAtStation - arrivalAtStationMin;
+
+      if (destination) {
+        const exitStation = findClosestStation(destination.lat, destination.lng, [line]);
+        if (!exitStation) continue;
+        const trainRideTime = Math.abs(exitStation.travelTime[line] - stationTT);
+        const totalTime = walkMin + station.rideMin + waitAtStation + trainRideTime;
+        const arrivalMin = nowMin + totalTime;
+        const arrivalDate = new Date(currentTime);
+        arrivalDate.setHours(Math.floor(arrivalMin / 60), Math.round(arrivalMin % 60), 0, 0);
+        if (!best || arrivalMin < best.arrivalMin) {
+          best = { stationName: station.name, walkMin, rideMin: station.rideMin, trainLine: line, exitStation: exitStation.name, totalTime, arrivalMin, arrivalTime: arrivalDate, trainWait: Math.round(waitAtStation) };
+        }
+      } else {
+        // No destination — optimize for earliest train departure
+        if (!best || trainAtStation < best.trainDepartMin) {
+          const departTime = new Date(currentTime);
+          departTime.setHours(Math.floor(trainAtStation / 60), Math.round(trainAtStation % 60), 0, 0);
+          best = { stationName: station.name, walkMin, rideMin: station.rideMin, trainLine: line, trainDepartMin: trainAtStation, departTime, trainWait: Math.round(waitAtStation) };
+        }
+      }
+    }
+  }
+  return best;
+}
+
+function getBestBusJourney(currentTime, destination) {
+  const nowMin = minutesSinceMidnight(currentTime);
+
+  if (destination) {
+    let best = null;
+    for (const [key, route] of Object.entries(BUS_ROUTES)) {
+      const arrivals = calculateScheduledArrivals(route, currentTime, 4);
+      for (const arrival of arrivals) {
+        const j = planJourney(route, arrival, destination, currentTime);
+        if (!j) continue;
+        const arrivalMin = nowMin + arrival.etaMinutes + j.totalTime;
+        if (!best || arrivalMin < best.arrivalMin) {
+          best = { ...j, arrivalMin };
+        }
+      }
+    }
+    return best;
+  } else {
+    const entries = buildDefaultEntries(currentTime);
+    if (entries.length === 0) return null;
+    const e = entries[0];
+    const departTime = new Date(currentTime);
+    departTime.setHours(Math.floor(e.trainDepartureMin / 60), Math.round(e.trainDepartureMin % 60), 0, 0);
+    return { ...e, trainDepartMin: e.trainDepartureMin, departTime };
+  }
+}
+
+function renderRecommendation(currentTime) {
+  const recEl = document.getElementById('recommendation');
+
+  const bestBus = getBestBusJourney(currentTime, selectedDestination);
+  const bestBike = getBestBikeJourney(currentTime, selectedDestination);
+  const bestWalk = getBestWalkJourney(currentTime, selectedDestination);
+
+  if (!bestBus && !bestBike && !bestWalk) { recEl.classList.add('hidden'); return; }
+
+  // Build candidate descriptions keyed by arrival or departure time
+  const candidates = [];
+
+  if (selectedDestination) {
+    if (bestBus) {
+      const busLeaveIn = Math.max(0, bestBus.busEta - (bestBus.walkToStop || 0));
+      const busLeaveNote = busLeaveIn <= 0 ? 'Leave now' : `Leave in ${busLeaveIn}m`;
+      const trainName = TRAIN_LINE_COLORS[bestBus.trainLine].name;
+      candidates.push({ min: bestBus.arrivalMin, mode: 'bus',
+        summary: `${busLeaveNote} — take the ${bestBus.busRoute} (${bestBus.walkToStop || 0}m walk) to ${bestBus.transferStation}, catch the ${trainName} to ${bestBus.exitStation}. Arrive by ${formatTime(bestBus.arrivalTime)}.`
+      });
+    }
+    if (bestBike) {
+      const trainName = TRAIN_LINE_COLORS[bestBike.trainLine].name;
+      const walkNote = bestBike.walkMin ? `${bestBike.walkMin}m walk + ${bestBike.rideMin}m ride` : `${bestBike.rideMin}m ride`;
+      candidates.push({ min: bestBike.arrivalMin, mode: 'ebike',
+        summary: `Bike to ${bestBike.stationName} (${walkNote}), catch the ${trainName} to ${bestBike.exitStation}. Arrive by ${formatTime(bestBike.arrivalTime)}.`
+      });
+    }
+    if (bestWalk) {
+      const trainName = TRAIN_LINE_COLORS[bestWalk.trainLine].name;
+      candidates.push({ min: bestWalk.arrivalMin, mode: 'walk',
+        summary: `Walk to ${bestWalk.stationName} (${bestWalk.walkMin}m), catch the ${trainName} to ${bestWalk.exitStation}. Arrive by ${formatTime(bestWalk.arrivalTime)}.`
+      });
+    }
+  } else {
+    if (bestBus) {
+      const busLeaveIn = Math.max(0, bestBus.busEta - (bestBus.walkToStop || 0));
+      const busLeaveNote = busLeaveIn <= 0 ? 'Leave now' : `Leave in ${busLeaveIn}m`;
+      const trainName = TRAIN_LINE_COLORS[bestBus.trainLine].name;
+      candidates.push({ min: bestBus.trainDepartMin, mode: 'bus',
+        summary: `${busLeaveNote} — take the ${bestBus.busRoute} (${bestBus.walkToStop || 0}m walk) to ${bestBus.transferStation}, catch the ${trainName} at ${formatTime(bestBus.departTime)}.`
+      });
+    }
+    if (bestBike) {
+      const trainName = TRAIN_LINE_COLORS[bestBike.trainLine].name;
+      const walkNote = bestBike.walkMin ? `${bestBike.walkMin}m walk + ${bestBike.rideMin}m ride` : `${bestBike.rideMin}m ride`;
+      candidates.push({ min: bestBike.trainDepartMin, mode: 'ebike',
+        summary: `Bike to ${bestBike.stationName} (${walkNote}), catch the ${trainName} at ${formatTime(bestBike.departTime)}.`
+      });
+    }
+    if (bestWalk) {
+      const trainName = TRAIN_LINE_COLORS[bestWalk.trainLine].name;
+      candidates.push({ min: bestWalk.trainDepartMin, mode: 'walk',
+        summary: `Walk to ${bestWalk.stationName} (${bestWalk.walkMin}m), catch the ${trainName} at ${formatTime(bestWalk.departTime)}.`
+      });
+    }
+  }
+
+  if (candidates.length === 0) { recEl.classList.add('hidden'); return; }
+
+  candidates.sort((a, b) => a.min - b.min);
+  const winner = candidates[0];
+  const runnerUp = candidates[1];
+
+  const modeLabels = { bus: 'bus', ebike: 'biking', walk: 'walking' };
+  let detail = '';
+  if (runnerUp) {
+    const diff = Math.round(runnerUp.min - winner.min);
+    if (diff > 0) {
+      const comparison = selectedDestination ? `arrive ${diff}m sooner than` : `on a train ${diff}m sooner than`;
+      detail = `You'll ${comparison} ${modeLabels[runnerUp.mode]}.`;
+    }
+  }
+
+  recEl.innerHTML = `<div class="rec-label">Recommended</div><div class="rec-summary">${winner.summary}</div>${detail ? `<div class="rec-detail">${detail}</div>` : ''}`;
+  recEl.classList.remove('hidden');
+}
+
+function renderAlertsBanner(delays, alerts) {
+  // Build a compact alerts banner for delayed lines
+  const items = [];
+
+  // Gap-based delays
+  for (const [route, info] of Object.entries(delays)) {
+    items.push(`<span class="alert-route">${route}</span> ~${info.minutesLate}m behind schedule`);
+  }
+
+  // Service alerts from NextBus messages (only high-priority)
+  for (const [route, messages] of Object.entries(alerts)) {
+    for (const msg of messages) {
+      if (msg.priority === 'High' || msg.priority === 'Critical') {
+        items.push(`<span class="alert-route">${route}</span> ${msg.text}`);
+      }
+    }
+  }
+
+  if (items.length === 0) return '';
+  return `<div class="alerts-banner">${items.map(t => `<div class="alert-item">${t}</div>`).join('')}</div>`;
+}
+
+function getDelayBadge(routeOrLine, delays) {
+  const d = delays[routeOrLine];
+  if (!d) return '';
+  const cls = d.minutesLate > 10 ? '' : 'warn';
+  return `<span class="delay-badge ${cls}">~${d.minutesLate}m late</span>`;
+}
+
+function renderArrivals() {
+  const list = document.getElementById('arrivals-list');
+  const currentTime = now();
+
+  renderRecommendation(currentTime);
+
+  // Compute delay info from live data
+  const delays = liveData.active ? detectGapDelays(currentTime) : {};
+  const alertsBanner = liveData.active ? renderAlertsBanner(delays, liveData.alerts) : '';
+
+  // ── Destination mode: full journey planning ──
+  if (selectedDestination) {
+    if (activeTab === 'bus') {
+      journeys = [];
+
+      for (const [key, route] of Object.entries(BUS_ROUTES)) {
+        const arrivals = calculateScheduledArrivals(route, currentTime);
+        for (const arrival of arrivals) {
+          const journey = planJourney(route, arrival, selectedDestination, currentTime);
+          if (journey) journeys.push(journey);
+        }
+      }
+
+      journeys.sort((a, b) => a.totalTime - b.totalTime);
+      journeys = journeys.slice(0, 10);
+
+      if (journeys.length === 0) {
+        list.innerHTML = '<div class="empty-state">No upcoming transit options found</div>';
+        return;
+      }
+
+      list.innerHTML = alertsBanner + journeys.map((j, i) => {
+        const leaveIn = Math.max(0, j.busEta - j.walkToStop);
+        const urgencyClass = leaveIn <= 0 ? 'urgent' : leaveIn <= 3 ? 'soon' : '';
+        const etaClass = leaveIn <= 0 ? 'urgent' : leaveIn <= 3 ? 'soon' : '';
+        const routeClass = BUS_ROUTES[j.busRoute].cssClass;
+        const trainInfo = TRAIN_LINE_COLORS[j.trainLine];
+        const busDelayBadge = getDelayBadge(j.busRoute, delays);
+        const trainDelayBadge = getDelayBadge(j.trainLine, delays);
+        const leaveLabel = leaveIn <= 0 ? 'leave now' : `leave in ${leaveIn}m`;
+
+        return `
+          <div class="arrival-card ${urgencyClass}" data-index="${i}">
+            <div class="card-top">
+              <div style="display:flex;align-items:center;gap:10px">
+                <span class="route-badge ${routeClass}">${j.busRoute}</span>
+                <span style="font-size:13px;color:var(--text-dim)">${leaveLabel} · ${j.walkToStop}m walk</span>
+                ${busDelayBadge}
+              </div>
+              <span class="bus-eta ${etaClass}">${j.busEta <= 0 ? 'NOW' : j.busEta + 'm'}</span>
+            </div>
+            <div class="card-mid">
+              <span>${j.transferStation}</span>
+              <span class="arrow">&rarr;</span>
+              <span class="train-badge ${trainInfo.cssClass}">${j.trainLine}</span>${trainDelayBadge}
+              <span class="arrow">&rarr;</span>
+              <span>${j.exitStation}</span>
+            </div>
+            <div class="card-bottom">
+              <span>At ${j.exitStation} by ${formatTime(j.arrivalTime)}</span>
+              <span class="total-time">${formatMinutes(j.totalTime)}</span>
+            </div>
+          </div>
+        `;
+      }).join('');
+
+      list.querySelectorAll('.arrival-card').forEach(card => {
+        card.addEventListener('click', () => {
+          const idx = parseInt(card.dataset.index);
+          openBusDestModal(journeys[idx]);
+        });
+      });
+
+    } else if (activeTab === 'ebike') {
+      // ── E-Bike + destination ──
+      const nowMin = minutesSinceMidnight(currentTime);
+      const closestStation = findClosestStation(
+        selectedDestination.lat, selectedDestination.lng, ['K', 'L', 'M']
+      );
+      const entries = [];
+
+      for (const station of EBIKE_STATIONS) {
+        const walkMin = station.walkMin || 0;
+        const arrivalAtStationMin = nowMin + walkMin + station.rideMin;
+
+        for (const line of station.lines) {
+          const scheduledStation = Object.keys(TRAIN_SCHEDULES).find(s =>
+            TRAIN_SCHEDULES[s][line]
+          );
+          if (!scheduledStation) continue;
+
+          const train = getNextTrainDeparture(scheduledStation, line, arrivalAtStationMin, currentTime);
+          if (!train) continue;
+
+          // Find the exit station for this line closest to destination
+          const exitStation = findClosestStation(
+            selectedDestination.lat, selectedDestination.lng, [line]
+          );
+          if (!exitStation) continue;
+
+          const scheduledTravelTime = MUNI_STATIONS[station.name]?.travelTime?.[line] || 0;
+          const exitTravelTime = exitStation.travelTime[line];
+          const trainRideTime = Math.abs(exitTravelTime - scheduledTravelTime);
+
+          const scheduledStationTravelTime = MUNI_STATIONS[scheduledStation]?.travelTime?.[line] || 0;
+          const offset = (MUNI_STATIONS[station.name]?.travelTime?.[line] || 0) - scheduledStationTravelTime;
+          const trainAtThisStation = train.departureMinutes + offset;
+          if (trainAtThisStation < arrivalAtStationMin) continue;
+
+          const waitAtStation = trainAtThisStation - arrivalAtStationMin;
+          const totalTime = walkMin + station.rideMin + waitAtStation + trainRideTime;
+
+          const arrivalDate = new Date(currentTime);
+          const arrivalMin = nowMin + totalTime;
+          arrivalDate.setHours(Math.floor(arrivalMin / 60), Math.round(arrivalMin % 60), 0, 0);
+
+          entries.push({
+            stationName: station.name,
+            walkMin,
+            rideMin: station.rideMin,
+            trainLine: line,
+            trainWait: Math.round(waitAtStation),
+            trainRideTime,
+            exitStation: exitStation.name,
+            totalTime,
+            arrivalTime: arrivalDate,
+            trainDepartAbsolute: trainAtThisStation
+          });
+        }
+      }
+
+      entries.sort((a, b) => a.totalTime - b.totalTime);
+      const seen = new Set();
+      const deduped = entries.filter(e => {
+        const key = `${e.stationName}|${e.trainLine}`;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      }).slice(0, 10);
+
+      if (deduped.length === 0) {
+        list.innerHTML = '<div class="empty-state">No upcoming transit options found</div>';
+        return;
+      }
+
+      list.innerHTML = alertsBanner + deduped.map((e, i) => {
+        const trainInfo = TRAIN_LINE_COLORS[e.trainLine];
+        const trainDelayBadge = getDelayBadge(e.trainLine, delays);
+        const travelLabel = e.walkMin ? `${e.walkMin}m walk + ${e.rideMin}m ride` : `${e.rideMin}m ride`;
+        return `
+          <div class="arrival-card" data-index="${i}">
+            <div class="card-top">
+              <div style="display:flex;align-items:center;gap:10px">
+                <span style="font-size:16px">&#x1f6b2;</span>
+                <span style="font-size:14px;font-weight:600">${e.stationName}</span>
+              </div>
+              <span style="font-size:13px;color:var(--text-dim)">${travelLabel}</span>
+            </div>
+            <div class="card-mid">
+              <span class="train-badge ${trainInfo.cssClass}">${e.trainLine}</span>${trainDelayBadge}
+              <span class="arrow">&rarr;</span>
+              <span>${e.exitStation}</span>
+            </div>
+            <div class="card-bottom">
+              <span>At ${e.exitStation} by ${formatTime(e.arrivalTime)}</span>
+              <span class="total-time">${formatMinutes(e.totalTime)}</span>
+            </div>
+          </div>
+        `;
+      }).join('');
+
+      list.querySelectorAll('.arrival-card').forEach(card => {
+        card.addEventListener('click', () => {
+          const idx = parseInt(card.dataset.index);
+          const e = deduped[idx];
+          const stationData = MUNI_STATIONS[e.stationName];
+          openEbikeModal({ ...e, stationCoords: stationData ? { lat: stationData.lat, lng: stationData.lng } : null });
+        });
+      });
+
+    } else {
+      // ── Walk + destination ──
+      const nowMin = minutesSinceMidnight(currentTime);
+      const station = WALK_STATION;
+      const arrivalAtStationMin = nowMin + station.walkMin;
+      const walkEntries = [];
+
+      for (const line of station.lines) {
+        const scheduledStation = Object.keys(TRAIN_SCHEDULES).find(s =>
+          TRAIN_SCHEDULES[s][line]
+        );
+        if (!scheduledStation) continue;
+
+        const train = getNextTrainDeparture(scheduledStation, line, arrivalAtStationMin, currentTime);
+        if (!train) continue;
+
+        const exitStation = findClosestStation(
+          selectedDestination.lat, selectedDestination.lng, [line]
+        );
+        if (!exitStation) continue;
+
+        const stationTT = MUNI_STATIONS[station.name]?.travelTime?.[line] || 0;
+        const exitTravelTime = exitStation.travelTime[line];
+        const trainRideTime = Math.abs(exitTravelTime - stationTT);
+
+        const scheduledStationTravelTime = MUNI_STATIONS[scheduledStation]?.travelTime?.[line] || 0;
+        const offset = stationTT - scheduledStationTravelTime;
+        const trainAtThisStation = train.departureMinutes + offset;
+        if (trainAtThisStation < arrivalAtStationMin) continue;
+
+        const waitAtStation = trainAtThisStation - arrivalAtStationMin;
+        const totalTime = station.walkMin + waitAtStation + trainRideTime;
+
+        const arrivalDate = new Date(currentTime);
+        const arrivalMin = nowMin + totalTime;
+        arrivalDate.setHours(Math.floor(arrivalMin / 60), Math.round(arrivalMin % 60), 0, 0);
+
+        walkEntries.push({
+          stationName: station.name,
+          walkMin: station.walkMin,
+          trainLine: line,
+          trainWait: Math.round(waitAtStation),
+          trainRideTime,
+          exitStation: exitStation.name,
+          totalTime,
+          arrivalTime: arrivalDate,
+          trainDepartAbsolute: trainAtThisStation
+        });
+      }
+
+      walkEntries.sort((a, b) => a.totalTime - b.totalTime);
+
+      if (walkEntries.length === 0) {
+        list.innerHTML = '<div class="empty-state">No upcoming transit options found</div>';
+        return;
+      }
+
+      list.innerHTML = alertsBanner + walkEntries.map((e, i) => {
+        const trainInfo = TRAIN_LINE_COLORS[e.trainLine];
+        const trainDelayBadge = getDelayBadge(e.trainLine, delays);
+        return `
+          <div class="arrival-card" data-index="${i}">
+            <div class="card-top">
+              <div style="display:flex;align-items:center;gap:10px">
+                <span style="font-size:16px">&#x1F6B6;</span>
+                <span style="font-size:14px;font-weight:600">${e.stationName}</span>
+              </div>
+              <span style="font-size:13px;color:var(--text-dim)">${e.walkMin}m walk</span>
+            </div>
+            <div class="card-mid">
+              <span class="train-badge ${trainInfo.cssClass}">${e.trainLine}</span>${trainDelayBadge}
+              <span class="arrow">&rarr;</span>
+              <span>${e.exitStation}</span>
+            </div>
+            <div class="card-bottom">
+              <span>At ${e.exitStation} by ${formatTime(e.arrivalTime)}</span>
+              <span class="total-time">${formatMinutes(e.totalTime)}</span>
+            </div>
+          </div>
+        `;
+      }).join('');
+
+      list.querySelectorAll('.arrival-card').forEach(card => {
+        card.addEventListener('click', () => {
+          const idx = parseInt(card.dataset.index);
+          openWalkModal(walkEntries[idx]);
+        });
+      });
+    }
+    return;
+  }
+
+  // ── Default mode ──
+  if (activeTab === 'bus') {
+    const entries = buildDefaultEntries(currentTime);
+
+    if (entries.length === 0) {
+      list.innerHTML = '<div class="empty-state">No upcoming service</div>';
+      return;
+    }
+
+    list.innerHTML = alertsBanner + entries.map((e, i) => {
+      const urgencyClass = e.leaveIn <= 0 ? 'urgent' : e.leaveIn <= 3 ? 'soon' : '';
+      const etaClass = e.leaveIn <= 0 ? 'urgent' : e.leaveIn <= 3 ? 'soon' : '';
+      const routeClass = BUS_ROUTES[e.busRoute].cssClass;
+      const bestTrainInfo = TRAIN_LINE_COLORS[e.trainLine];
+      const busDelayBadge = getDelayBadge(e.busRoute, delays);
+      const trainDelayBadge = getDelayBadge(e.trainLine, delays);
+
+      const trainBadges = e.availableLines.map(l => {
+        const info = TRAIN_LINE_COLORS[l];
+        const isBest = l === e.trainLine;
+        return `<span class="train-badge ${info.cssClass}" style="${isBest ? '' : 'opacity:0.45'}">${l}</span>`;
+      }).join(' ');
+
+      const trainDepartTime = new Date(currentTime);
+      trainDepartTime.setHours(Math.floor(e.trainDepartureMin / 60), e.trainDepartureMin % 60, 0, 0);
+
+      const leaveLabel = e.leaveIn <= 0 ? 'leave now' : `leave in ${e.leaveIn}m`;
+
+      return `
+        <div class="arrival-card ${urgencyClass}" data-index="${i}">
+          <div class="card-top">
+            <div style="display:flex;align-items:center;gap:10px">
+              <span class="route-badge ${routeClass}">${e.busRoute}</span>
+              <span style="font-size:13px;color:var(--text-dim)">${leaveLabel} · ${e.walkToStop}m walk</span>
+              ${busDelayBadge}
+            </div>
+            <span class="bus-eta ${etaClass}">${e.busEta <= 0 ? 'NOW' : e.busEta + 'm'}</span>
+          </div>
+          <div class="card-mid">
+            <span>${e.transferStation}</span>
+            <span class="arrow">&rarr;</span>
+            ${trainBadges}
+          </div>
+          <div class="card-bottom">
+            <span><span class="train-badge ${bestTrainInfo.cssClass}">${e.trainLine}</span> departs ${formatTime(trainDepartTime)}${trainDelayBadge}</span>
+            <span class="total-time">wait ${e.trainWait}m for your train</span>
+          </div>
+        </div>
+      `;
+    }).join('');
+
+    list.querySelectorAll('.arrival-card').forEach(card => {
+      card.addEventListener('click', () => {
+        const idx = parseInt(card.dataset.index);
+        openDefaultBusModal(entries[idx]);
+      });
+    });
+
+  } else if (activeTab === 'ebike') {
+    // ── E-Bike tab ──
+    const entries = buildEbikeEntries(currentTime);
+
+    if (entries.length === 0) {
+      list.innerHTML = '<div class="empty-state">No upcoming service</div>';
+      return;
+    }
+
+    list.innerHTML = alertsBanner + entries.map((e, i) => {
+      const trainInfo = TRAIN_LINE_COLORS[e.trainLine];
+      const trainDelayBadge = getDelayBadge(e.trainLine, delays);
+
+      const trainDepartTime = new Date(currentTime);
+      trainDepartTime.setHours(Math.floor(e.trainDepartAbsolute / 60), Math.round(e.trainDepartAbsolute % 60), 0, 0);
+
+      const travelLabel = e.walkMin ? `${e.walkMin}m walk + ${e.rideMin}m ride` : `${e.rideMin}m ride`;
+
+      return `
+        <div class="arrival-card" data-index="${i}">
+          <div class="card-top">
+            <div style="display:flex;align-items:center;gap:10px">
+              <span style="font-size:16px">&#x1f6b2;</span>
+              <span style="font-size:14px;font-weight:600">${e.stationName}</span>
+            </div>
+            <span style="font-size:13px;color:var(--text-dim)">${travelLabel}</span>
+          </div>
+          <div class="card-bottom">
+            <span><span class="train-badge ${trainInfo.cssClass}">${e.trainLine}</span> departs ${formatTime(trainDepartTime)}${trainDelayBadge}</span>
+            <span class="total-time">wait ${e.trainWait}m for your train</span>
+          </div>
+        </div>
+      `;
+    }).join('');
+
+    list.querySelectorAll('.arrival-card').forEach(card => {
+      card.addEventListener('click', () => {
+        const idx = parseInt(card.dataset.index);
+        openEbikeModal(entries[idx]);
+      });
+    });
+
+  } else {
+    // ── Walk tab ──
+    const entries = buildWalkEntries(currentTime);
+
+    if (entries.length === 0) {
+      list.innerHTML = '<div class="empty-state">No upcoming service</div>';
+      return;
+    }
+
+    list.innerHTML = alertsBanner + entries.map((e, i) => {
+      const trainInfo = TRAIN_LINE_COLORS[e.trainLine];
+      const trainDelayBadge = getDelayBadge(e.trainLine, delays);
+
+      const trainDepartTime = new Date(currentTime);
+      trainDepartTime.setHours(Math.floor(e.trainDepartAbsolute / 60), Math.round(e.trainDepartAbsolute % 60), 0, 0);
+
+      return `
+        <div class="arrival-card" data-index="${i}">
+          <div class="card-top">
+            <div style="display:flex;align-items:center;gap:10px">
+              <span style="font-size:16px">&#x1F6B6;</span>
+              <span style="font-size:14px;font-weight:600">${e.stationName}</span>
+            </div>
+            <span style="font-size:13px;color:var(--text-dim)">${e.walkMin}m walk</span>
+          </div>
+          <div class="card-bottom">
+            <span><span class="train-badge ${trainInfo.cssClass}">${e.trainLine}</span> departs ${formatTime(trainDepartTime)}${trainDelayBadge}</span>
+            <span class="total-time">wait ${e.trainWait}m for your train</span>
+          </div>
+        </div>
+      `;
+    }).join('');
+
+    list.querySelectorAll('.arrival-card').forEach(card => {
+      card.addEventListener('click', () => {
+        const idx = parseInt(card.dataset.index);
+        openWalkModal(entries[idx]);
+      });
+    });
+  }
+}
+
+
+// ── Modal & Map ─────────────────────────────────────────────────────────────
+
+function openBusDestModal(journey) {
+  const overlay = document.getElementById('modal-overlay');
+  const content = document.getElementById('modal-content');
+  const route = BUS_ROUTES[journey.busRoute];
+  const trainInfo = TRAIN_LINE_COLORS[journey.trainLine];
+
+  const walkToStop = journey.walkToStop || 0;
+  const leaveIn = Math.max(0, journey.busEta - walkToStop);
+
+  content.innerHTML = `
+    <div class="journey-header">
+      <span class="route-badge ${route.cssClass}">${journey.busRoute}</span>
+      <div>
+        <div class="journey-total">${formatMinutes(journey.totalTime)}</div>
+        <div class="journey-total-label">to ${journey.exitStation} &middot; by ${formatTime(journey.arrivalTime)}</div>
+      </div>
+    </div>
+
+    <div class="timeline">
+      ${walkToStop > 0 ? `
+      <div class="timeline-step">
+        <div class="timeline-line">
+          <div class="timeline-dot walk"></div>
+          <div class="timeline-connector"></div>
+        </div>
+        <div class="timeline-content">
+          <div class="timeline-title">Walk to bus stop</div>
+          <div class="timeline-duration">${walkToStop} min walk</div>
+          <div class="timeline-detail">${leaveIn <= 0 ? 'Leave now' : `Leave in ${leaveIn} min`}</div>
+        </div>
+      </div>
+      ` : ''}
+
+      <div class="timeline-step">
+        <div class="timeline-line">
+          <div class="timeline-dot ${route.dotClass}"></div>
+          <div class="timeline-connector"></div>
+        </div>
+        <div class="timeline-content">
+          <div class="timeline-title">Catch ${journey.busRoute} at stop</div>
+          <div class="timeline-detail">Departs ${formatTime(journey.busDeparture)}</div>
+          <div class="timeline-duration">${journey.busEta <= 0 ? 'Departing now' : `Bus in ${journey.busEta} min`}</div>
+        </div>
+      </div>
+
+      <div class="timeline-step">
+        <div class="timeline-line">
+          <div class="timeline-dot walk"></div>
+          <div class="timeline-connector"></div>
+        </div>
+        <div class="timeline-content">
+          <div class="timeline-title">Ride to ${journey.transferStation}</div>
+          <div class="timeline-duration">${journey.busToTransferTime} min on bus</div>
+        </div>
+      </div>
+
+      <div class="timeline-step">
+        <div class="timeline-line">
+          <div class="timeline-dot train-${journey.trainLine.toLowerCase()}"></div>
+          <div class="timeline-connector"></div>
+        </div>
+        <div class="timeline-content">
+          <div class="timeline-title">Transfer to <span class="train-badge ${trainInfo.cssClass}">${journey.trainLine}</span> ${trainInfo.name}</div>
+          <div class="timeline-detail">Wait ~${journey.trainWait} min</div>
+          <div class="timeline-duration">${journey.trainRideTime} min to ${journey.exitStation}</div>
+        </div>
+      </div>
+
+      <div class="timeline-step">
+        <div class="timeline-line">
+          <div class="timeline-dot destination"></div>
+        </div>
+        <div class="timeline-content">
+          <div class="timeline-title">Walk to destination</div>
+          <div class="timeline-duration">${journey.walkTime} min walk</div>
+        </div>
+      </div>
+    </div>
+
+    <div id="modal-map"></div>
+  `;
+
+  overlay.classList.remove('hidden');
+  requestAnimationFrame(() => renderMap(journey));
+}
+
+function openDefaultBusModal(entry) {
+  const overlay = document.getElementById('modal-overlay');
+  const content = document.getElementById('modal-content');
+  const route = BUS_ROUTES[entry.busRoute];
+  const trainInfo = TRAIN_LINE_COLORS[entry.trainLine];
+  const trainDepartTime = new Date();
+  trainDepartTime.setHours(Math.floor(entry.trainDepartureMin / 60), entry.trainDepartureMin % 60, 0, 0);
+
+  const walkToStop = entry.walkToStop || 0;
+  const leaveIn = Math.max(0, entry.busEta - walkToStop);
+
+  content.innerHTML = `
+    <div class="journey-header">
+      <span class="route-badge ${route.cssClass}">${entry.busRoute}</span>
+      <div>
+        <div class="journey-total">${trainInfo.name} at ${formatTime(trainDepartTime)}</div>
+        <div class="journey-total-label">via ${entry.transferStation}</div>
+      </div>
+    </div>
+
+    <div class="timeline">
+      ${walkToStop > 0 ? `
+      <div class="timeline-step">
+        <div class="timeline-line">
+          <div class="timeline-dot walk"></div>
+          <div class="timeline-connector"></div>
+        </div>
+        <div class="timeline-content">
+          <div class="timeline-title">Walk to bus stop</div>
+          <div class="timeline-duration">${walkToStop} min walk</div>
+          <div class="timeline-detail">${leaveIn <= 0 ? 'Leave now' : `Leave in ${leaveIn} min`}</div>
+        </div>
+      </div>
+      ` : ''}
+
+      <div class="timeline-step">
+        <div class="timeline-line">
+          <div class="timeline-dot ${route.dotClass}"></div>
+          <div class="timeline-connector"></div>
+        </div>
+        <div class="timeline-content">
+          <div class="timeline-title">Catch ${entry.busRoute} at stop</div>
+          <div class="timeline-detail">Departs ${formatTime(entry.busDeparture)}</div>
+          <div class="timeline-duration">${entry.busEta <= 0 ? 'Departing now' : `Bus in ${entry.busEta} min`}</div>
+        </div>
+      </div>
+
+      <div class="timeline-step">
+        <div class="timeline-line">
+          <div class="timeline-dot walk"></div>
+          <div class="timeline-connector"></div>
+        </div>
+        <div class="timeline-content">
+          <div class="timeline-title">Ride to ${entry.transferStation}</div>
+          <div class="timeline-duration">${entry.busToTransferTime} min on bus</div>
+        </div>
+      </div>
+
+      <div class="timeline-step">
+        <div class="timeline-line">
+          <div class="timeline-dot train-${entry.trainLine.toLowerCase()}"></div>
+        </div>
+        <div class="timeline-content">
+          <div class="timeline-title">Board <span class="train-badge ${trainInfo.cssClass}">${entry.trainLine}</span> ${trainInfo.name}</div>
+          <div class="timeline-detail">Wait ~${entry.trainWait} min</div>
+          <div class="timeline-duration">Departs ${formatTime(trainDepartTime)}</div>
+        </div>
+      </div>
+    </div>
+  `;
+
+  overlay.classList.remove('hidden');
+}
+
+function openEbikeModal(entry) {
+  const overlay = document.getElementById('modal-overlay');
+  const content = document.getElementById('modal-content');
+  const trainInfo = TRAIN_LINE_COLORS[entry.trainLine];
+  const trainDepartTime = new Date();
+  const departMin = entry.trainDepartAbsolute || entry.trainDepartureMin || 0;
+  trainDepartTime.setHours(Math.floor(departMin / 60), Math.round(departMin % 60), 0, 0);
+
+  const hasExit = entry.exitStation && entry.exitStation !== entry.stationName;
+
+  const walkMin = entry.walkMin || 0;
+
+  content.innerHTML = `
+    <div class="journey-header">
+      <span style="font-size:22px">&#x1f6b2;</span>
+      <div>
+        <div class="journey-total">${trainInfo.name} at ${formatTime(trainDepartTime)}</div>
+        <div class="journey-total-label">bike to ${entry.stationName}${hasExit ? ' &middot; exit ' + entry.exitStation : ''}</div>
+      </div>
+    </div>
+
+    <div class="timeline">
+      ${walkMin > 0 ? `
+      <div class="timeline-step">
+        <div class="timeline-line">
+          <div class="timeline-dot walk"></div>
+          <div class="timeline-connector"></div>
+        </div>
+        <div class="timeline-content">
+          <div class="timeline-title">Walk to e-bike dock</div>
+          <div class="timeline-duration">${walkMin} min walk</div>
+        </div>
+      </div>
+      ` : ''}
+
+      <div class="timeline-step">
+        <div class="timeline-line">
+          <div class="timeline-dot walk"></div>
+          <div class="timeline-connector"></div>
+        </div>
+        <div class="timeline-content">
+          <div class="timeline-title">Bike to ${entry.stationName}</div>
+          <div class="timeline-duration">${entry.rideMin} min ride</div>
+        </div>
+      </div>
+
+      <div class="timeline-step">
+        <div class="timeline-line">
+          <div class="timeline-dot train-${entry.trainLine.toLowerCase()}"></div>
+          ${hasExit ? '<div class="timeline-connector"></div>' : ''}
+        </div>
+        <div class="timeline-content">
+          <div class="timeline-title">Board <span class="train-badge ${trainInfo.cssClass}">${entry.trainLine}</span> ${trainInfo.name}</div>
+          <div class="timeline-detail">Wait ~${entry.trainWait} min</div>
+          <div class="timeline-duration">Departs ${formatTime(trainDepartTime)}</div>
+        </div>
+      </div>
+
+      ${hasExit ? `
+      <div class="timeline-step">
+        <div class="timeline-line">
+          <div class="timeline-dot destination"></div>
+        </div>
+        <div class="timeline-content">
+          <div class="timeline-title">Exit at ${entry.exitStation}</div>
+          ${entry.trainRideTime ? `<div class="timeline-duration">${entry.trainRideTime} min on train</div>` : ''}
+        </div>
+      </div>
+      ` : ''}
+    </div>
+
+    ${entry.stationCoords ? '<div id="modal-map"></div>' : ''}
+  `;
+
+  overlay.classList.remove('hidden');
+
+  if (entry.stationCoords) {
+    requestAnimationFrame(() => {
+      if (mapInstance) { mapInstance.remove(); mapInstance = null; }
+      const mapEl = document.getElementById('modal-map');
+      if (!mapEl) return;
+      mapInstance = L.map('modal-map', { zoomControl: false });
+      L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+        attribution: '&copy; OSM &amp; CARTO', maxZoom: 18
+      }).addTo(mapInstance);
+
+      function makeIcon(color) {
+        return L.divIcon({ className: '', html: `<div style="width:14px;height:14px;border-radius:50%;background:${color};border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,0.5)"></div>`, iconSize: [14, 14], iconAnchor: [7, 7] });
+      }
+
+      const markers = [
+        L.marker([HOME_STOP.lat, HOME_STOP.lng], { icon: makeIcon('#64b5f6') }).bindPopup('Home'),
+        L.marker([entry.stationCoords.lat, entry.stationCoords.lng], { icon: makeIcon(trainInfo.color) }).bindPopup(entry.stationName)
+      ];
+      markers.forEach(m => m.addTo(mapInstance));
+      mapInstance.fitBounds(L.latLngBounds(markers.map(m => m.getLatLng())), { padding: [30, 30] });
+    });
+  }
+}
+
+function openWalkModal(entry) {
+  const overlay = document.getElementById('modal-overlay');
+  const content = document.getElementById('modal-content');
+  const trainInfo = TRAIN_LINE_COLORS[entry.trainLine];
+  const departMin = entry.trainDepartAbsolute || 0;
+  const trainDepartTime = new Date();
+  trainDepartTime.setHours(Math.floor(departMin / 60), Math.round(departMin % 60), 0, 0);
+
+  const hasExit = entry.exitStation && entry.exitStation !== entry.stationName;
+
+  content.innerHTML = `
+    <div class="journey-header">
+      <span style="font-size:22px">&#x1F6B6;</span>
+      <div>
+        <div class="journey-total">${hasExit ? formatMinutes(entry.totalTime) : trainInfo.name + ' at ' + formatTime(trainDepartTime)}</div>
+        <div class="journey-total-label">walk to ${entry.stationName}${hasExit ? ' &middot; exit ' + entry.exitStation : ''}</div>
+      </div>
+    </div>
+
+    <div class="timeline">
+      <div class="timeline-step">
+        <div class="timeline-line">
+          <div class="timeline-dot walk"></div>
+          <div class="timeline-connector"></div>
+        </div>
+        <div class="timeline-content">
+          <div class="timeline-title">Walk to ${entry.stationName}</div>
+          <div class="timeline-duration">${entry.walkMin} min walk</div>
+        </div>
+      </div>
+
+      <div class="timeline-step">
+        <div class="timeline-line">
+          <div class="timeline-dot train-${entry.trainLine.toLowerCase()}"></div>
+          ${hasExit ? '<div class="timeline-connector"></div>' : ''}
+        </div>
+        <div class="timeline-content">
+          <div class="timeline-title">Board <span class="train-badge ${trainInfo.cssClass}">${entry.trainLine}</span> ${trainInfo.name}</div>
+          <div class="timeline-detail">Wait ~${entry.trainWait} min</div>
+          <div class="timeline-duration">Departs ${formatTime(trainDepartTime)}</div>
+        </div>
+      </div>
+
+      ${hasExit ? `
+      <div class="timeline-step">
+        <div class="timeline-line">
+          <div class="timeline-dot destination"></div>
+        </div>
+        <div class="timeline-content">
+          <div class="timeline-title">Exit at ${entry.exitStation}</div>
+          ${entry.trainRideTime ? `<div class="timeline-duration">${entry.trainRideTime} min on train</div>` : ''}
+        </div>
+      </div>
+      ` : ''}
+    </div>
+
+    <div id="modal-map"></div>
+  `;
+
+  overlay.classList.remove('hidden');
+
+  requestAnimationFrame(() => {
+    if (mapInstance) { mapInstance.remove(); mapInstance = null; }
+    const mapEl = document.getElementById('modal-map');
+    if (!mapEl) return;
+    mapInstance = L.map('modal-map', { zoomControl: false });
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+      attribution: '&copy; OSM &amp; CARTO', maxZoom: 18
+    }).addTo(mapInstance);
+
+    function makeIcon(color) {
+      return L.divIcon({ className: '', html: `<div style="width:14px;height:14px;border-radius:50%;background:${color};border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,0.5)"></div>`, iconSize: [14, 14], iconAnchor: [7, 7] });
+    }
+
+    const stationCoords = MUNI_STATIONS[entry.stationName] || WALK_STATION;
+    const markers = [
+      L.marker([HOME_STOP.lat, HOME_STOP.lng], { icon: makeIcon('#64b5f6') }).bindPopup('Home'),
+      L.marker([stationCoords.lat, stationCoords.lng], { icon: makeIcon(trainInfo.color) }).bindPopup(entry.stationName)
+    ];
+    markers.forEach(m => m.addTo(mapInstance));
+    mapInstance.fitBounds(L.latLngBounds(markers.map(m => m.getLatLng())), { padding: [30, 30] });
+  });
+}
+
+function closeModal() {
+  document.getElementById('modal-overlay').classList.add('hidden');
+  if (mapInstance) {
+    mapInstance.remove();
+    mapInstance = null;
+  }
+}
+
+function renderMap(journey) {
+  if (mapInstance) {
+    mapInstance.remove();
+    mapInstance = null;
+  }
+
+  const mapEl = document.getElementById('modal-map');
+  if (!mapEl) return;
+
+  mapInstance = L.map('modal-map', { zoomControl: false });
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+    attribution: '&copy; OSM &amp; CARTO',
+    maxZoom: 18
+  }).addTo(mapInstance);
+
+  const route = BUS_ROUTES[journey.busRoute];
+  const trainInfo = TRAIN_LINE_COLORS[journey.trainLine];
+
+  function makeIcon(color) {
+    return L.divIcon({
+      className: '',
+      html: `<div style="width:14px;height:14px;border-radius:50%;background:${color};border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,0.5)"></div>`,
+      iconSize: [14, 14],
+      iconAnchor: [7, 7]
+    });
+  }
+
+  const markers = [
+    L.marker([journey.busPickup.lat, journey.busPickup.lng], { icon: makeIcon(route.color) })
+      .bindPopup(`<b>${journey.busRoute}</b> pickup<br>${HOME_STOP.name}`),
+    L.marker([journey.transferCoords.lat, journey.transferCoords.lng], { icon: makeIcon(trainInfo.color) })
+      .bindPopup(`<b>${journey.trainLine}</b> at ${journey.transferStation}`),
+    L.marker([journey.destCoords.lat, journey.destCoords.lng], { icon: makeIcon('#66bb6a') })
+      .bindPopup(`Destination`)
+  ];
+
+  // Add exit station marker if different from transfer
+  if (journey.exitStation !== journey.transferStation) {
+    markers.push(
+      L.marker([journey.exitCoords.lat, journey.exitCoords.lng], { icon: makeIcon(trainInfo.color) })
+        .bindPopup(`Exit at ${journey.exitStation}`)
+    );
+  }
+
+  markers.forEach(m => m.addTo(mapInstance));
+
+  const bounds = L.latLngBounds(markers.map(m => m.getLatLng()));
+  mapInstance.fitBounds(bounds, { padding: [30, 30] });
+}
+
+
+// ── Event Wiring ────────────────────────────────────────────────────────────
+
+document.addEventListener('DOMContentLoaded', () => {
+  const input = document.getElementById('destination-input');
+  const searchBtn = document.getElementById('search-btn');
+  const suggestionsEl = document.getElementById('suggestions');
+  const destDisplay = document.getElementById('destination-display');
+  const modalOverlay = document.getElementById('modal-overlay');
+  const modalClose = document.getElementById('modal-close');
+
+  // Clock
+  updateClock();
+  setInterval(updateClock, 1000);
+
+  // Refresh real-time data every 30s, then re-render
+  async function refreshAndRender() {
+    await refreshLiveData();
+    renderArrivals();
+  }
+  setInterval(refreshAndRender, 30000);
+
+  // Initial fetch
+  refreshAndRender();
+
+  // Tabs
+  document.querySelectorAll('.tab').forEach(tab => {
+    tab.addEventListener('click', () => {
+      document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+      tab.classList.add('active');
+      activeTab = tab.dataset.tab;
+      renderArrivals();
+    });
+  });
+
+  // Search input
+  input.addEventListener('input', () => {
+    clearTimeout(searchTimeout);
+    searchTimeout = setTimeout(async () => {
+      const results = await searchDestination(input.value);
+      if (results.length === 0) {
+        suggestionsEl.classList.add('hidden');
+        return;
+      }
+      suggestionsEl.innerHTML = results.map((r, i) =>
+        `<div class="suggestion-item" data-index="${i}">${r.short}${r.context ? `<span style="color:var(--text-dim);font-size:12px;margin-left:6px">${r.context}</span>` : ''}</div>`
+      ).join('');
+      suggestionsEl.classList.remove('hidden');
+
+      suggestionsEl.querySelectorAll('.suggestion-item').forEach(item => {
+        item.addEventListener('click', () => {
+          const idx = parseInt(item.dataset.index);
+          selectDestination(results[idx]);
+        });
+      });
+    }, 350);
+  });
+
+  // Search button triggers search on current input
+  searchBtn.addEventListener('click', async () => {
+    const results = await searchDestination(input.value);
+    if (results.length > 0) selectDestination(results[0]);
+  });
+
+  // Enter key
+  input.addEventListener('keydown', async (e) => {
+    if (e.key === 'Enter') {
+      const results = await searchDestination(input.value);
+      if (results.length > 0) selectDestination(results[0]);
+    }
+  });
+
+  // Close suggestions on outside click
+  document.addEventListener('click', (e) => {
+    if (!e.target.closest('.search-container')) {
+      suggestionsEl.classList.add('hidden');
+    }
+  });
+
+  // Modal
+  modalOverlay.addEventListener('click', (e) => {
+    if (e.target === modalOverlay) closeModal();
+  });
+  modalClose.addEventListener('click', closeModal);
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') closeModal();
+  });
+
+  function selectDestination(dest) {
+    selectedDestination = dest;
+    input.value = dest.short;
+    suggestionsEl.classList.add('hidden');
+    destDisplay.innerHTML = `<span class="dest-label">To</span> ${dest.short}${dest.context ? ', ' + dest.context : ''}<button id="clear-dest" style="margin-left:auto;background:none;border:none;color:var(--text-dim);cursor:pointer;font-size:16px;padding:0 4px" aria-label="Clear destination">&times;</button>`;
+    destDisplay.classList.remove('hidden');
+    document.getElementById('clear-dest').addEventListener('click', () => {
+      selectedDestination = null;
+      input.value = '';
+      destDisplay.classList.add('hidden');
+      renderArrivals();
+    });
+    renderArrivals();
+  }
+
+});
