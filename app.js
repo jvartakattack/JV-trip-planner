@@ -113,7 +113,6 @@ const MUNI_STATIONS = {
 
 // E-bike: walk to nearest dock, then ride to a Muni station
 const WALK_TO_DOCK_MIN = 7;       // home → nearest dock (Outer Sunset)
-const CITY_WALK_TO_DOCK_MIN = 3;  // typical city walk to find a Bay Wheels dock
 const EBIKE_STATIONS = [
   { name: 'Taraval & 19th', ...MUNI_STATIONS['Taraval & 19th'], rideMin: 2, walkMin: WALK_TO_DOCK_MIN },
   { name: 'West Portal',    ...MUNI_STATIONS['West Portal'],    rideMin: 5, walkMin: WALK_TO_DOCK_MIN }
@@ -687,19 +686,44 @@ function findClosestBoardingStation(originLat, originLng) {
   return results;
 }
 
+// Find nearest Bay Wheels dock to a point, return walk time in minutes
+function findNearestDock(lat, lng) {
+  if (!bayWheelsStationCache || bayWheelsStationCache.length === 0) return null;
+  let best = null;
+  for (const s of bayWheelsStationCache) {
+    const dist = haversineDistanceRaw(lat, lng, s.lat, s.lon);
+    if (!best || dist < best.dist) best = { lat: s.lat, lng: s.lon, dist };
+  }
+  if (!best) return null;
+  return { lat: best.lat, lng: best.lng, walkMin: Math.max(1, Math.round((best.dist / 5) * 60)) };
+}
+
 function buildInboundEntries(origin, currentTime, firstMileMode) {
   if (!origin) return [];
   const entries = [];
   const nowMin = minutesSinceMidnight(currentTime);
+
+  // For e-bike: find nearest dock to origin, compute walk-to-dock + bike-to-station
+  let nearestDock = null;
+  if (firstMileMode === 'ebike') {
+    nearestDock = findNearestDock(origin.lat, origin.lng);
+  }
 
   const boardingOptions = findClosestBoardingStation(origin.lat, origin.lng);
   // Consider the 6 closest station+line combos
   const nearbyStations = boardingOptions.slice(0, 6);
 
   for (const boarding of nearbyStations) {
-    const firstMileTime = firstMileMode === 'walk' ? boarding.walkMin
-      : firstMileMode === 'ebike' ? Math.max(boarding.bikeMin, 2) + CITY_WALK_TO_DOCK_MIN
-      : boarding.walkMin;
+    let firstMileTime, walkToDock = 0, bikeRide = 0;
+    if (firstMileMode === 'ebike' && nearestDock) {
+      walkToDock = nearestDock.walkMin;
+      // Bike from dock to boarding station
+      const dockToStation = haversineDistanceRaw(nearestDock.lat, nearestDock.lng, boarding.lat, boarding.lng);
+      bikeRide = Math.max(1, Math.round((dockToStation / 15) * 60));
+      firstMileTime = walkToDock + bikeRide;
+    } else {
+      firstMileTime = boarding.walkMin;
+    }
 
     const arriveAtStationMin = nowMin + firstMileTime;
     const boardingTT = boarding.travelTime[boarding.line];
@@ -753,6 +777,8 @@ function buildInboundEntries(origin, currentTime, firstMileMode) {
           boardingCoords: { lat: boarding.lat, lng: boarding.lng },
           firstMileMode,
           firstMileTime,
+          walkToDock: walkToDock,
+          bikeRide: bikeRide,
           trainLine: boarding.line,
           trainWait: Math.round(waitTime),
           trainRideTime,
@@ -1264,7 +1290,7 @@ function renderArrivals() {
       trainDepartTime.setHours(Math.floor(e.trainDepartAbsolute / 60), Math.round(e.trainDepartAbsolute % 60), 0, 0);
 
       const firstMileLabel = e.firstMileMode === 'ebike'
-        ? `${CITY_WALK_TO_DOCK_MIN}m walk + ${e.firstMileTime - CITY_WALK_TO_DOCK_MIN}m bike`
+        ? `${e.walkToDock}m walk + ${e.bikeRide}m bike`
         : `${e.firstMileTime}m walk`;
       const firstMileIcon = e.firstMileMode === 'ebike' ? '&#x1f6b2;' : '&#x1F6B6;';
 
@@ -2128,7 +2154,7 @@ function openInboundModal(entry) {
         </div>
         <div class="timeline-content">
           <div class="timeline-title">Walk to e-bike dock</div>
-          <div class="timeline-duration">${CITY_WALK_TO_DOCK_MIN} min walk</div>
+          <div class="timeline-duration">${entry.walkToDock} min walk</div>
         </div>
       </div>
       <div class="timeline-step">
@@ -2138,7 +2164,7 @@ function openInboundModal(entry) {
         </div>
         <div class="timeline-content">
           <div class="timeline-title">Bike to ${entry.boardingStation}</div>
-          <div class="timeline-duration">${entry.firstMileTime - CITY_WALK_TO_DOCK_MIN} min ride</div>
+          <div class="timeline-duration">${entry.bikeRide} min ride</div>
         </div>
       </div>
       ` : `
