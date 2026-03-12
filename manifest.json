@@ -1,7 +1,7 @@
 {
-  "name": "SF Transit Board",
-  "short_name": "Transit",
-  "start_url": "/",
+  "name": "JV Trips",
+  "short_name": "JV Trips",
+  "start_url": ".",
   "display": "standalone",
   "background_color": "#0f1117",
   "theme_color": "#0f1117",
