@@ -1281,7 +1281,11 @@ function renderArrivals() {
     const origin = selectedDestination; // in inbound mode, "destination" is actually the origin
     const modeMap = { bus: 'walk', ebike: 'ebike', walk: 'walk' };
     const firstMileMode = modeMap[activeTab] || 'walk';
-    const inboundEntries = buildInboundEntries(origin, currentTime, firstMileMode);
+    let inboundEntries = buildInboundEntries(origin, currentTime, firstMileMode);
+    // Walk tab: no e-bikes at all (filter out last-mile e-bike variants)
+    if (activeTab === 'walk') {
+      inboundEntries = inboundEntries.filter(e => e.lastMileMode !== 'ebike');
+    }
 
     // Inbound recommendation
     renderInboundRecommendation(origin, currentTime);
