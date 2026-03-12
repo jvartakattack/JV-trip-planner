@@ -2355,27 +2355,61 @@ document.addEventListener('DOMContentLoaded', () => {
   const app = document.getElementById('app');
   const backBtn = document.getElementById('back-btn');
 
-  function animateButton(card, direction) {
+  function launchRocket(card, callback) {
+    const icon = card.querySelector('.landing-icon');
+    if (!icon) { callback(); return; }
+
+    // Clone the rocket and position it fixed over the original
+    const rect = icon.getBoundingClientRect();
+    const clone = document.createElement('div');
+    clone.textContent = icon.textContent;
+    clone.style.cssText = `
+      position:fixed;left:${rect.left}px;top:${rect.top}px;
+      font-size:${rect.height}px;line-height:1;
+      z-index:9999;pointer-events:none;
+      transition: transform 0.6s cubic-bezier(0.4,0,0.2,1), opacity 0.6s ease;
+    `;
+    document.body.appendChild(clone);
+
+    // Hide the original icon
+    icon.style.opacity = '0';
+
+    // Fade out landing page
+    landing.style.transition = 'opacity 0.45s ease';
+    landing.style.opacity = '0';
+
+    // Fly the rocket: up and slightly to center, then off the top
+    requestAnimationFrame(() => {
+      const centerX = window.innerWidth / 2 - rect.left - rect.width / 2;
+      clone.style.transform = `translate(${centerX}px, ${-(rect.top + rect.height + 60)}px) scale(1.8) rotate(-20deg)`;
+      clone.style.opacity = '0.2';
+    });
+
+    setTimeout(() => {
+      clone.remove();
+      icon.style.opacity = '';
+      landing.style.transition = '';
+      landing.style.opacity = '';
+      callback();
+    }, 600);
+  }
+
+  function thudHome(card) {
     const icon = card.querySelector('.landing-icon');
     if (!icon) return;
-    if (direction === 'outbound') {
-      icon.classList.add('rocket-launch');
-      icon.addEventListener('animationend', () => icon.classList.remove('rocket-launch'), { once: true });
-    } else {
-      icon.classList.add('home-thud');
-      icon.addEventListener('animationend', () => icon.classList.remove('home-thud'), { once: true });
-    }
+    icon.classList.add('home-thud');
+    icon.addEventListener('animationend', () => icon.classList.remove('home-thud'), { once: true });
   }
 
   async function enterApp(direction) {
     activeDirection = direction;
     input.placeholder = direction === 'inbound' ? 'Where are you coming from?' : 'Where are you going?';
-    setTimeout(async () => {
+
+    const showApp = async () => {
       landing.classList.add('hidden');
       app.classList.remove('hidden');
 
       if (direction === 'inbound') {
-        // Detect location and prefill; also fetch e-bike availability
         document.getElementById('arrivals-list').innerHTML = '<div class="empty-state">Detecting your location...</div>';
         try {
           const [pos] = await Promise.all([getCurrentPosition(), refreshEbikeAvailability()]);
@@ -2387,13 +2421,20 @@ document.addEventListener('DOMContentLoaded', () => {
         }
       }
       await refreshAndRender();
-    }, 400);
+    };
+
+    return showApp();
   }
 
   document.querySelectorAll('.landing-card').forEach(card => {
     card.addEventListener('click', () => {
-      animateButton(card, card.dataset.direction);
-      enterApp(card.dataset.direction);
+      const direction = card.dataset.direction;
+      if (direction === 'outbound') {
+        launchRocket(card, () => enterApp(direction));
+      } else {
+        thudHome(card);
+        setTimeout(() => enterApp(direction), 350);
+      }
     });
   });
 
