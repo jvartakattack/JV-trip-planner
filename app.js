@@ -1152,23 +1152,42 @@ function initRecSwipe(recEl) {
   if (recEl._recSwipeInit) return;
   recEl._recSwipeInit = true;
   let sx = 0;
-  recEl.addEventListener('touchstart', e => { sx = e.touches[0].clientX; }, { passive: true });
+  let swiped = false;
+  recEl.addEventListener('touchstart', e => {
+    sx = e.touches[0].clientX;
+    swiped = false;
+  }, { passive: true });
   recEl.addEventListener('touchend', e => {
     const dx = e.changedTouches[0].clientX - sx;
     const c = recEl._recCards;
     let idx = recEl._recSlide;
     if (c && Math.abs(dx) > 40) {
+      swiped = true;
       if (dx < 0 && idx < c.length - 1) idx++;
       else if (dx > 0 && idx > 0) idx--;
       recEl._recSlide = idx;
       const t = recEl.querySelector('.rec-track');
       if (t) t.style.transform = `translateX(-${idx * 100}%)`;
       recEl.querySelectorAll('.rec-dot').forEach((d, i) => d.classList.toggle('active', i === idx));
+      // Update tab without re-rendering (which would reset slide position)
       const tabMode = c[idx].winner.mode.split('-')[0];
-      switchToTab(tabMode);
+      document.querySelectorAll('.tab').forEach(tb => {
+        tb.classList.remove('active');
+        tb.querySelector('.tab-rec')?.remove();
+      });
+      const target = document.querySelector(`.tab[data-tab="${tabMode}"]`);
+      if (target) {
+        target.classList.add('active');
+        const badge = document.createElement('span');
+        badge.className = 'tab-rec';
+        badge.textContent = 'Recommended';
+        target.appendChild(badge);
+      }
+      activeTab = tabMode;
     }
   });
   recEl.addEventListener('click', () => {
+    if (swiped) { swiped = false; return; }
     const c = recEl._recCards;
     if (!c) return;
     const w = c[recEl._recSlide].winner;
@@ -1272,9 +1291,13 @@ function renderRecommendation(currentTime) {
 
   if (cards.length === 0) { recEl.classList.add('hidden'); return; }
 
+  // Preserve slide position across re-renders
+  const prevSlide = recEl._recSlide || 0;
+  const slideIdx = Math.min(prevSlide, cards.length - 1);
+
   let dotsHtml = '';
   if (cards.length > 1) {
-    dotsHtml = `<div class="rec-dots">${cards.map((_, i) => `<span class="rec-dot${i === 0 ? ' active' : ''}"></span>`).join('')}</div>`;
+    dotsHtml = `<div class="rec-dots">${cards.map((_, i) => `<span class="rec-dot${i === slideIdx ? ' active' : ''}"></span>`).join('')}</div>`;
   }
 
   const slidesHtml = cards.map(c => {
@@ -1283,17 +1306,18 @@ function renderRecommendation(currentTime) {
     return `<div class="rec-slide"><div class="rec-label">${c.label}</div><div class="rec-summary">${c.winner.summary}</div>${availLine}${detailLine}</div>`;
   }).join('');
 
-  recEl.innerHTML = `<div class="rec-track">${slidesHtml}</div>${dotsHtml}`;
+  recEl.innerHTML = `<div class="rec-track" style="transform:translateX(-${slideIdx * 100}%)">${slidesHtml}</div>${dotsHtml}`;
   recEl.classList.remove('hidden');
 
-  const track = recEl.querySelector('.rec-track');
-  const dots = recEl.querySelectorAll('.rec-dot');
-
   recEl._recCards = cards;
-  recEl._recSlide = 0;
+  recEl._recSlide = slideIdx;
   initRecSwipe(recEl);
 
-  switchToTab(cards[0].winner.mode);
+  // Only auto-switch tab on first render, not on 30s refreshes
+  if (!recEl._recHasRendered) {
+    recEl._recHasRendered = true;
+    switchToTab(cards[slideIdx].winner.mode);
+  }
 }
 
 function renderAlertsBanner(delays, alerts) {
@@ -2219,9 +2243,12 @@ function renderInboundRecommendation(origin, currentTime) {
 
   if (cards.length === 0) { recEl.classList.add('hidden'); return; }
 
+  const prevSlide = recEl._recSlide || 0;
+  const slideIdx = Math.min(prevSlide, cards.length - 1);
+
   let dotsHtml = '';
   if (cards.length > 1) {
-    dotsHtml = `<div class="rec-dots">${cards.map((_, i) => `<span class="rec-dot${i === 0 ? ' active' : ''}"></span>`).join('')}</div>`;
+    dotsHtml = `<div class="rec-dots">${cards.map((_, i) => `<span class="rec-dot${i === slideIdx ? ' active' : ''}"></span>`).join('')}</div>`;
   }
 
   const slidesHtml = cards.map(c => {
@@ -2230,14 +2257,17 @@ function renderInboundRecommendation(origin, currentTime) {
     return `<div class="rec-slide"><div class="rec-label">${c.label}</div><div class="rec-summary">${c.winner.summary}</div>${availLine}${detailLine}</div>`;
   }).join('');
 
-  recEl.innerHTML = `<div class="rec-track">${slidesHtml}</div>${dotsHtml}`;
+  recEl.innerHTML = `<div class="rec-track" style="transform:translateX(-${slideIdx * 100}%)">${slidesHtml}</div>${dotsHtml}`;
   recEl.classList.remove('hidden');
 
   recEl._recCards = cards;
-  recEl._recSlide = 0;
+  recEl._recSlide = slideIdx;
   initRecSwipe(recEl);
 
-  switchToTab(cards[0].winner.mode.split('-')[0]);
+  if (!recEl._recHasRendered) {
+    recEl._recHasRendered = true;
+    switchToTab(cards[slideIdx].winner.mode.split('-')[0]);
+  }
 }
 
 function openInboundModal(entry) {
@@ -2642,7 +2672,10 @@ document.addEventListener('DOMContentLoaded', () => {
     selectedDestination = null;
     input.value = '';
     destDisplay.classList.add('hidden');
-    document.getElementById('recommendation').classList.add('hidden');
+    const recEl = document.getElementById('recommendation');
+    recEl.classList.add('hidden');
+    recEl._recHasRendered = false;
+    recEl._recSlide = 0;
   }
 
   backBtn.addEventListener('click', goBack);
