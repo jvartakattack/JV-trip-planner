@@ -3,30 +3,48 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-  <title>SF Transit Board</title>
+  <title>JV Trips</title>
   <!-- PWA -->
   <link rel="manifest" href="manifest.json" />
   <meta name="theme-color" content="#0f1117" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-  <meta name="apple-mobile-web-app-title" content="Transit" />
+  <meta name="apple-mobile-web-app-title" content="JV Trips" />
   <link rel="apple-touch-icon" id="apple-icon" href="icon-192.png" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
-  <div id="app">
+
+  <!-- Landing screen -->
+  <div id="landing">
+    <h1 class="landing-title">JV Trips</h1>
+    <p class="landing-subtitle">Where to, queen?</p>
+    <div class="landing-cards">
+      <button class="landing-card" data-direction="outbound">
+        <span class="landing-icon">🚀</span>
+        <span class="landing-label">Outbound</span>
+        <span class="landing-desc">Home → City</span>
+      </button>
+      <button class="landing-card" data-direction="inbound">
+        <span class="landing-icon">🏠</span>
+        <span class="landing-label">Inbound</span>
+        <span class="landing-desc">City → Home</span>
+      </button>
+    </div>
+    <button id="lucky-btn" class="lucky-btn">Hit me!</button>
+  </div>
+
+  <!-- Main app (hidden until direction chosen) -->
+  <div id="app" class="hidden">
     <header>
       <div class="header-top">
+        <button id="back-btn" class="back-btn" aria-label="Back">‹</button>
         <h1>JV Trips</h1>
         <div style="display:flex;align-items:center;gap:12px">
           <div id="live-badge" class="live-badge hidden">LIVE</div>
           <div id="clock" class="clock"></div>
         </div>
-      </div>
-      <div class="direction-toggle">
-        <button class="direction-btn active" data-direction="outbound">Outbound</button>
-        <button class="direction-btn" data-direction="inbound">Inbound</button>
       </div>
       <div class="search-container">
         <input

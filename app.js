@@ -1832,18 +1832,39 @@ document.addEventListener('DOMContentLoaded', () => {
   }
   setInterval(refreshAndRender, 30000);
 
-  // Initial fetch
-  refreshAndRender();
+  // Landing screen
+  const landing = document.getElementById('landing');
+  const app = document.getElementById('app');
+  const backBtn = document.getElementById('back-btn');
+  const luckyBtn = document.getElementById('lucky-btn');
 
-  // Direction toggle
-  document.querySelectorAll('.direction-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
-      document.querySelectorAll('.direction-btn').forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
-      activeDirection = btn.dataset.direction;
-      input.placeholder = activeDirection === 'inbound' ? 'Where are you coming from?' : 'Where are you going?';
-      renderArrivals();
-    });
+  const luckyLabels = [
+    'Hit me!', "I'm feeling lucky", 'Surprise me!', 'Let\u2019s roll!',
+    'Yolo', 'Take me anywhere', 'Spin the wheel', 'Just go!',
+    'Wing it', 'Dealer\u2019s choice', 'Random vibes', 'Send it!'
+  ];
+  luckyBtn.textContent = luckyLabels[Math.floor(Math.random() * luckyLabels.length)];
+
+  function enterApp(direction) {
+    activeDirection = direction;
+    input.placeholder = direction === 'inbound' ? 'Where are you coming from?' : 'Where are you going?';
+    landing.classList.add('hidden');
+    app.classList.remove('hidden');
+    refreshAndRender();
+  }
+
+  document.querySelectorAll('.landing-card').forEach(card => {
+    card.addEventListener('click', () => enterApp(card.dataset.direction));
+  });
+
+  luckyBtn.addEventListener('click', () => {
+    enterApp(Math.random() < 0.5 ? 'outbound' : 'inbound');
+  });
+
+  backBtn.addEventListener('click', () => {
+    app.classList.add('hidden');
+    landing.classList.remove('hidden');
+    luckyBtn.textContent = luckyLabels[Math.floor(Math.random() * luckyLabels.length)];
   });
 
   // Tabs
