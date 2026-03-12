@@ -1164,21 +1164,21 @@ function renderRecommendation(currentTime) {
       const busLeaveNote = busLeaveIn <= 0 ? 'Leave now' : `Leave in ${busLeaveIn}m`;
       const trainName = TRAIN_LINE_COLORS[bestBus.trainLine].name;
       candidates.push({ min: bestBus.arrivalMin, mode: 'bus', journey: bestBus,
-        summary: `${busLeaveNote} — take the ${bestBus.busRoute} (${bestBus.walkToStop || 0}m walk) to ${bestBus.transferStation}, catch the ${trainName} to ${bestBus.exitStation}. Arrive by ${formatTime(bestBus.arrivalTime)}.`
+        summary: `${busLeaveNote} — take the ${bestBus.busRoute} to ${bestBus.transferStation}, catch the ${trainName} to ${bestBus.exitStation}. Arrive by ${formatTime(bestBus.arrivalTime)}.`
       });
     }
     if (bestBike) {
       const trainName = TRAIN_LINE_COLORS[bestBike.trainLine].name;
-      const walkNote = bestBike.walkMin ? `${bestBike.walkMin}m walk + ${bestBike.rideMin}m ride` : `${bestBike.rideMin}m ride`;
-      const bikeAvail = ebikeAvailability.home !== null ? ` (${ebikeAvailability.home} e-bike${ebikeAvailability.home !== 1 ? 's' : ''} nearby)` : '';
+      const availCount = ebikeAvailability.home;
       candidates.push({ min: bestBike.arrivalMin, mode: 'ebike', journey: bestBike,
-        summary: `Pick up e-bike near home, bike to ${bestBike.stationName} (${walkNote}), catch the ${trainName} to ${bestBike.exitStation}. Arrive by ${formatTime(bestBike.arrivalTime)}.${bikeAvail}`
+        summary: `Pick up e-bike near home, bike to ${bestBike.stationName}, catch the ${trainName} to ${bestBike.exitStation}. Arrive by ${formatTime(bestBike.arrivalTime)}.`,
+        availHtml: availCount !== null ? `${availCount} e-bike${availCount !== 1 ? 's' : ''} available now` : ''
       });
     }
     if (bestWalk) {
       const trainName = TRAIN_LINE_COLORS[bestWalk.trainLine].name;
       candidates.push({ min: bestWalk.arrivalMin, mode: 'walk', journey: bestWalk,
-        summary: `Walk to ${bestWalk.stationName} (${bestWalk.walkMin}m), catch the ${trainName} to ${bestWalk.exitStation}. Arrive by ${formatTime(bestWalk.arrivalTime)}.`
+        summary: `Walk to ${bestWalk.stationName}, catch the ${trainName} to ${bestWalk.exitStation}. Arrive by ${formatTime(bestWalk.arrivalTime)}.`
       });
     }
   } else {
@@ -1187,21 +1187,21 @@ function renderRecommendation(currentTime) {
       const busLeaveNote = busLeaveIn <= 0 ? 'Leave now' : `Leave in ${busLeaveIn}m`;
       const trainName = TRAIN_LINE_COLORS[bestBus.trainLine].name;
       candidates.push({ min: bestBus.trainDepartMin, mode: 'bus', journey: bestBus,
-        summary: `${busLeaveNote} — take the ${bestBus.busRoute} (${bestBus.walkToStop || 0}m walk) to ${bestBus.transferStation}, catch the ${trainName} at ${formatTime(bestBus.departTime)}.`
+        summary: `${busLeaveNote} — take the ${bestBus.busRoute} to ${bestBus.transferStation}, catch the ${trainName} at ${formatTime(bestBus.departTime)}.`
       });
     }
     if (bestBike) {
       const trainName = TRAIN_LINE_COLORS[bestBike.trainLine].name;
-      const walkNote = bestBike.walkMin ? `${bestBike.walkMin}m walk + ${bestBike.rideMin}m ride` : `${bestBike.rideMin}m ride`;
-      const bikeAvail = ebikeAvailability.home !== null ? ` (${ebikeAvailability.home} e-bike${ebikeAvailability.home !== 1 ? 's' : ''} nearby)` : '';
+      const availCount = ebikeAvailability.home;
       candidates.push({ min: bestBike.trainDepartMin, mode: 'ebike', journey: bestBike,
-        summary: `Pick up e-bike near home, bike to ${bestBike.stationName} (${walkNote}), catch the ${trainName} at ${formatTime(bestBike.departTime)}.${bikeAvail}`
+        summary: `Pick up e-bike near home, bike to ${bestBike.stationName}, catch the ${trainName} at ${formatTime(bestBike.departTime)}.`,
+        availHtml: availCount !== null ? `${availCount} e-bike${availCount !== 1 ? 's' : ''} available now` : ''
       });
     }
     if (bestWalk) {
       const trainName = TRAIN_LINE_COLORS[bestWalk.trainLine].name;
       candidates.push({ min: bestWalk.trainDepartMin, mode: 'walk', journey: bestWalk,
-        summary: `Walk to ${bestWalk.stationName} (${bestWalk.walkMin}m), catch the ${trainName} at ${formatTime(bestWalk.departTime)}.`
+        summary: `Walk to ${bestWalk.stationName}, catch the ${trainName} at ${formatTime(bestWalk.departTime)}.`
       });
     }
   }
@@ -1222,7 +1222,8 @@ function renderRecommendation(currentTime) {
     }
   }
 
-  recEl.innerHTML = `<div class="rec-label">Recommended</div><div class="rec-summary">${winner.summary}</div>${detail ? `<div class="rec-detail">${detail}</div>` : ''}`;
+  const availLine = winner.availHtml ? `<div class="rec-avail">${winner.availHtml}</div>` : '';
+  recEl.innerHTML = `<div class="rec-label">Recommended</div><div class="rec-summary">${winner.summary}</div>${availLine}${detail ? `<div class="rec-detail">${detail}</div>` : ''}`;
   recEl.style.cursor = 'pointer';
   recEl.classList.remove('hidden');
   recEl.onclick = () => {
@@ -2108,24 +2109,24 @@ function renderInboundRecommendation(origin, currentTime) {
     const e = entries[0];
     const trainName = TRAIN_LINE_COLORS[e.trainLine].name;
     const dockLabel = e.dockName ? ` at ${e.dockName}` : '';
-    // Build availability tags for any e-bike legs
-    const availParts = [];
-    if (mode === 'ebike' && e.dockEbikes !== null) {
-      availParts.push(`${e.dockEbikes} e-bike${e.dockEbikes !== 1 ? 's' : ''} at pickup`);
-    }
-    if (e.lastMileMode === 'ebike' && ebikeAvailability.westPortal !== null) {
-      availParts.push(`${ebikeAvailability.westPortal} at West Portal`);
-    }
-    const availTag = availParts.length > 0 ? ` (${availParts.join(', ')})` : '';
     const firstMileDesc = mode === 'ebike'
       ? `Pick up e-bike${dockLabel}, bike to ${e.boardingStation}`
-      : `Walk to ${e.boardingStation} (${e.firstMileTime}m)`;
+      : `Walk to ${e.boardingStation}`;
     const lastMileDesc = e.lastMileMode === 'ebike' ? 'e-bike home' : 'walk home';
+    // Build availability line for e-bike legs
+    const availParts = [];
+    if (mode === 'ebike' && e.dockEbikes !== null) {
+      availParts.push(`${e.dockEbikes} e-bike${e.dockEbikes !== 1 ? 's' : ''} available at pickup`);
+    }
+    if (e.lastMileMode === 'ebike' && ebikeAvailability.westPortal !== null) {
+      availParts.push(`${ebikeAvailability.westPortal} e-bike${ebikeAvailability.westPortal !== 1 ? 's' : ''} at West Portal`);
+    }
     candidates.push({
       min: e.arrivalMin,
       mode: `${mode}-${e.lastMileMode || 'walk'}`,
       entry: e,
-      summary: `${firstMileDesc}, catch the ${trainName} to ${e.exitStation}, ${lastMileDesc}. Home by ${formatTime(e.arrivalTime)}.${availTag}`
+      summary: `${firstMileDesc}, catch the ${trainName} to ${e.exitStation}, ${lastMileDesc}. Home by ${formatTime(e.arrivalTime)}.`,
+      availHtml: availParts.length > 0 ? availParts.join(' · ') : ''
     });
   }
 
@@ -2142,7 +2143,8 @@ function renderInboundRecommendation(origin, currentTime) {
     }
   }
 
-  recEl.innerHTML = `<div class="rec-label">Recommended</div><div class="rec-summary">${winner.summary}</div>${detail ? `<div class="rec-detail">${detail}</div>` : ''}`;
+  const availLine = winner.availHtml ? `<div class="rec-avail">${winner.availHtml}</div>` : '';
+  recEl.innerHTML = `<div class="rec-label">Recommended</div><div class="rec-summary">${winner.summary}</div>${availLine}${detail ? `<div class="rec-detail">${detail}</div>` : ''}`;
   recEl.style.cursor = 'pointer';
   recEl.classList.remove('hidden');
   recEl.onclick = () => {

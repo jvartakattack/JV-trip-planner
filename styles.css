@@ -182,6 +182,12 @@ h1 {
   color: var(--text);
 }
 
+.recommendation .rec-avail {
+  color: var(--green);
+  font-size: 12px;
+  margin-top: 5px;
+}
+
 .recommendation .rec-detail {
   color: var(--text-dim);
   font-size: 13px;
