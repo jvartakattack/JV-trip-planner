@@ -1171,10 +1171,8 @@ function renderRecommendation(currentTime) {
     }
     if (bestBike) {
       const trainName = TRAIN_LINE_COLORS[bestBike.trainLine].name;
-      const availCount = ebikeAvailability.home;
       candidates.push({ min: bestBike.arrivalMin, mode: 'ebike', journey: bestBike,
-        summary: `Pick up e-bike near home, bike to ${bestBike.stationName}, catch the ${trainName} to ${bestBike.exitStation}. Arrive by ${formatTime(bestBike.arrivalTime)}.`,
-        availHtml: availCount !== null ? `${availCount} e-bike${availCount !== 1 ? 's' : ''} available now` : ''
+        summary: `Pick up e-bike near home, bike to ${bestBike.stationName}, catch the ${trainName} to ${bestBike.exitStation}. Arrive by ${formatTime(bestBike.arrivalTime)}.`
       });
     }
     if (bestWalk) {
@@ -1194,10 +1192,8 @@ function renderRecommendation(currentTime) {
     }
     if (bestBike) {
       const trainName = TRAIN_LINE_COLORS[bestBike.trainLine].name;
-      const availCount = ebikeAvailability.home;
       candidates.push({ min: bestBike.trainDepartMin, mode: 'ebike', journey: bestBike,
-        summary: `Pick up e-bike near home, bike to ${bestBike.stationName}, catch the ${trainName} at ${formatTime(bestBike.departTime)}.`,
-        availHtml: availCount !== null ? `${availCount} e-bike${availCount !== 1 ? 's' : ''} available now` : ''
+        summary: `Pick up e-bike near home, bike to ${bestBike.stationName}, catch the ${trainName} at ${formatTime(bestBike.departTime)}.`
       });
     }
     if (bestWalk) {
@@ -1946,7 +1942,6 @@ function openEbikeModal(entry) {
         <div class="timeline-content">
           <div class="timeline-title">Walk to e-bike dock near home</div>
           <div class="timeline-duration">${walkMin} min walk</div>
-          ${ebikeAvailability.home !== null ? `<div class="timeline-detail">${ebikeAvailability.home} e-bike${ebikeAvailability.home !== 1 ? 's' : ''} nearby</div>` : ''}
         </div>
       </div>
       ` : ''}
@@ -2117,11 +2112,11 @@ function renderInboundRecommendation(origin, currentTime) {
     const lastMileDesc = e.lastMileMode === 'ebike' ? 'e-bike home' : 'walk home';
     // Build availability line for e-bike legs
     const availParts = [];
-    if (mode === 'ebike' && e.dockEbikes !== null) {
-      availParts.push(`${e.dockEbikes} e-bike${e.dockEbikes !== 1 ? 's' : ''} available at pickup`);
+    if (mode === 'ebike' && e.dockEbikes !== null && e.dockName) {
+      availParts.push(`${e.dockEbikes} e-bike${e.dockEbikes !== 1 ? 's' : ''} available at ${e.dockName}`);
     }
     if (e.lastMileMode === 'ebike' && ebikeAvailability.westPortal !== null) {
-      availParts.push(`${ebikeAvailability.westPortal} e-bike${ebikeAvailability.westPortal !== 1 ? 's' : ''} at West Portal`);
+      availParts.push(`${ebikeAvailability.westPortal} e-bike${ebikeAvailability.westPortal !== 1 ? 's' : ''} available at West Portal`);
     }
     candidates.push({
       min: e.arrivalMin,
@@ -2183,7 +2178,7 @@ function openInboundModal(entry) {
         <div class="timeline-content">
           <div class="timeline-title">Walk to ${entry.dockName || 'e-bike dock'}</div>
           <div class="timeline-duration">${entry.walkToDock} min walk</div>
-          ${entry.dockEbikes !== null ? `<div class="timeline-detail">${entry.dockEbikes} e-bike${entry.dockEbikes !== 1 ? 's' : ''} available now</div>` : ''}
+          ${entry.dockEbikes !== null && entry.dockName ? `<div class="timeline-detail">${entry.dockEbikes} e-bike${entry.dockEbikes !== 1 ? 's' : ''} available at ${entry.dockName}</div>` : ''}
         </div>
       </div>
       <div class="timeline-step">
@@ -2239,7 +2234,7 @@ function openInboundModal(entry) {
         <div class="timeline-content">
           <div class="timeline-title">${entry.lastMileMode === 'ebike' ? 'E-bike home' : 'Walk home'}</div>
           <div class="timeline-duration">${entry.lastMileTime || entry.walkHome} min ${entry.lastMileMode === 'ebike' ? 'ride' : 'walk'}</div>
-          ${entry.lastMileMode === 'ebike' && ebikeAvailability.westPortal !== null ? `<div class="timeline-detail">${ebikeAvailability.westPortal} e-bike${ebikeAvailability.westPortal !== 1 ? 's' : ''} available now</div>` : ''}
+          ${entry.lastMileMode === 'ebike' && ebikeAvailability.westPortal !== null ? `<div class="timeline-detail">${ebikeAvailability.westPortal} e-bike${ebikeAvailability.westPortal !== 1 ? 's' : ''} available at West Portal</div>` : ''}
         </div>
       </div>
     </div>
