@@ -1210,12 +1210,12 @@ function renderRecommendation(currentTime) {
   const winner = candidates[0];
   const runnerUp = candidates[1];
 
-  const modeLabels = { bus: 'bus', ebike: 'biking', walk: 'walking' };
+  const modeLabels = { bus: 'the bus', ebike: 'biking', walk: 'walking' };
   let detail = '';
   if (runnerUp) {
     const diff = Math.round(runnerUp.min - winner.min);
     if (diff > 0) {
-      const comparison = selectedDestination ? `arrive ${diff}m sooner than` : `be on a train ${diff}m sooner than`;
+      const comparison = selectedDestination ? `arrive ${diff}min sooner than if you took` : `be on a train ${diff}min sooner than if you took`;
       detail = `You'll ${comparison} ${modeLabels[runnerUp.mode]}.`;
     }
   }
