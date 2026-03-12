@@ -1151,13 +1151,33 @@ function getBestBusJourney(currentTime, destination) {
 function initRecSwipe(recEl) {
   if (recEl._recSwipeInit) return;
   recEl._recSwipeInit = true;
-  let sx = 0;
+  let sx = 0, sy = 0;
   let swiped = false;
+  let direction = null; // 'horizontal' or 'vertical' — locks after first significant move
+
   recEl.addEventListener('touchstart', e => {
     sx = e.touches[0].clientX;
+    sy = e.touches[0].clientY;
     swiped = false;
+    direction = null;
   }, { passive: true });
+
+  // Must be non-passive to call preventDefault and stop browser scroll
+  recEl.addEventListener('touchmove', e => {
+    if (!direction) {
+      const dx = Math.abs(e.touches[0].clientX - sx);
+      const dy = Math.abs(e.touches[0].clientY - sy);
+      if (dx > 10 || dy > 10) {
+        direction = dx > dy ? 'horizontal' : 'vertical';
+      }
+    }
+    if (direction === 'horizontal') {
+      e.preventDefault();
+    }
+  }, { passive: false });
+
   recEl.addEventListener('touchend', e => {
+    if (direction !== 'horizontal') return;
     const dx = e.changedTouches[0].clientX - sx;
     const c = recEl._recCards;
     let idx = recEl._recSlide;
@@ -1169,7 +1189,6 @@ function initRecSwipe(recEl) {
       const t = recEl.querySelector('.rec-track');
       if (t) t.style.transform = `translateX(-${idx * 100}%)`;
       recEl.querySelectorAll('.rec-dot').forEach((d, i) => d.classList.toggle('active', i === idx));
-      // Update tab without re-rendering (which would reset slide position)
       const tabMode = c[idx].winner.mode.split('-')[0];
       document.querySelectorAll('.tab').forEach(tb => {
         tb.classList.remove('active');
@@ -1186,6 +1205,7 @@ function initRecSwipe(recEl) {
       activeTab = tabMode;
     }
   });
+
   recEl.addEventListener('click', () => {
     if (swiped) { swiped = false; return; }
     const c = recEl._recCards;

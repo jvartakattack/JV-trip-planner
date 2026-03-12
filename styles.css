@@ -171,6 +171,7 @@ h1 {
   cursor: pointer;
   transition: background 0.15s, border-color 0.15s;
   overflow: hidden;
+  touch-action: pan-y;
 }
 .recommendation:active {
   background: var(--border);
