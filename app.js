@@ -2435,12 +2435,12 @@ document.addEventListener('DOMContentLoaded', () => {
   setInterval(updateClock, 1000);
 
   // Refresh real-time data every 30s, then re-render
+  let refreshInterval = null;
   async function refreshAndRender() {
     if (!locationReady) return;
     await Promise.all([refreshLiveData(), refreshEbikeAvailability()]);
     renderArrivals();
   }
-  setInterval(refreshAndRender, 30000);
 
   // Landing screen
   const landing = document.getElementById('landing');
@@ -2600,6 +2600,9 @@ document.addEventListener('DOMContentLoaded', () => {
     const showApp = async () => {
       landing.classList.add('hidden');
       app.classList.remove('hidden');
+
+      // Start the 30s refresh cycle on first entry
+      if (!refreshInterval) refreshInterval = setInterval(refreshAndRender, 30000);
 
       if (direction === 'inbound') {
         locationReady = false;
