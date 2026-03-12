@@ -554,6 +554,154 @@ function planJourney(route, busArrival, destination, currentTime) {
 }
 
 
+// ── Geolocation & Reverse Geocoding ─────────────────────────────────────────
+
+async function getCurrentPosition() {
+  return new Promise((resolve, reject) => {
+    if (!navigator.geolocation) return reject(new Error('Geolocation not supported'));
+    navigator.geolocation.getCurrentPosition(
+      pos => resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
+      err => reject(err),
+      { enableHighAccuracy: true, timeout: 10000 }
+    );
+  });
+}
+
+async function reverseGeocode(lat, lng) {
+  try {
+    const url = `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json&addressdetails=1`;
+    const resp = await fetch(url, {
+      headers: { 'Accept-Language': 'en', 'User-Agent': 'SFTransitBoard/1.0' }
+    });
+    const r = await resp.json();
+    let short;
+    if (r.address?.road) {
+      short = `${r.address.house_number || ''} ${r.address.road}`.trim();
+    } else if (r.name) {
+      short = r.name;
+    } else {
+      short = formatAddress(r.display_name).split(',')[0];
+    }
+    const context = [r.address?.neighbourhood, r.address?.suburb, r.address?.city_district]
+      .filter(Boolean)[0] || '';
+    return { short, context, lat, lng, display: formatAddress(r.display_name) };
+  } catch {
+    return { short: `${lat.toFixed(4)}, ${lng.toFixed(4)}`, context: '', lat, lng, display: '' };
+  }
+}
+
+
+// ── Inbound Trip Planning ───────────────────────────────────────────────────
+
+// Home-area exit stations for inbound trips
+const INBOUND_EXIT_STATIONS = {
+  'Taraval & 19th': { walkHome: 12 },
+  'West Portal':    { walkHome: 18 }
+};
+
+// Find the closest Muni station to an origin point (for boarding)
+function findClosestBoardingStation(originLat, originLng) {
+  let results = [];
+  for (const [name, station] of Object.entries(MUNI_STATIONS)) {
+    // Skip home-area surface stops west of West Portal — those are exit stations, not boarding
+    if (INBOUND_EXIT_STATIONS[name]) continue;
+    const dist = haversineDistance(originLat, originLng, station.lat, station.lng);
+    const walkMin = Math.round((dist / 5) * 60); // 5 km/h walking
+    const bikeMin = Math.round((dist / 15) * 60); // 15 km/h biking
+    for (const line of station.lines) {
+      results.push({ name, ...station, line, distKm: dist, walkMin, bikeMin });
+    }
+  }
+  results.sort((a, b) => a.distKm - b.distKm);
+  return results;
+}
+
+function buildInboundEntries(origin, currentTime, firstMileMode) {
+  if (!origin) return [];
+  const entries = [];
+  const nowMin = minutesSinceMidnight(currentTime);
+
+  const boardingOptions = findClosestBoardingStation(origin.lat, origin.lng);
+  // Only consider the 3 closest stations to keep it practical
+  const nearbyStations = boardingOptions.slice(0, 6);
+
+  for (const boarding of nearbyStations) {
+    const firstMileTime = firstMileMode === 'walk' ? boarding.walkMin
+      : firstMileMode === 'ebike' ? Math.max(boarding.bikeMin, 2) + WALK_TO_DOCK_MIN
+      : boarding.walkMin; // bus tab: walk to station, same as walk for now
+
+    const arriveAtStationMin = nowMin + firstMileTime;
+
+    // Get next train on this line at this station
+    const train = getNextTrain(boarding.name, boarding.line, arriveAtStationMin, currentTime);
+    if (!train) continue;
+
+    // Only consider trains going TOWARD home (travelTime must be positive = east of WP,
+    // or the station is on the subway trunk headed west)
+    const boardingTT = boarding.travelTime[boarding.line];
+
+    // Find the best exit station for this line
+    for (const [exitName, exitInfo] of Object.entries(INBOUND_EXIT_STATIONS)) {
+      const exitStation = MUNI_STATIONS[exitName];
+      if (!exitStation || !exitStation.lines.includes(boarding.line)) continue;
+
+      const exitTT = exitStation.travelTime[boarding.line];
+      // Train ride time: difference in travel times
+      // Positive boardingTT = east of WP, exitTT is 0 (WP) or 0 (Taraval) → ride = boardingTT - exitTT
+      const trainRideTime = Math.abs(boardingTT - exitTT);
+
+      // Skip if the exit station is FARTHER from WP than boarding (wrong direction)
+      if (boardingTT <= exitTT) continue;
+
+      const totalTime = firstMileTime + train.waitTime + trainRideTime + exitInfo.walkHome;
+
+      const arrivalDate = new Date(currentTime);
+      const arrivalMin = nowMin + totalTime;
+      arrivalDate.setHours(Math.floor(arrivalMin / 60), Math.round(arrivalMin % 60), 0, 0);
+
+      entries.push({
+        boardingStation: boarding.name,
+        boardingCoords: { lat: boarding.lat, lng: boarding.lng },
+        firstMileMode,
+        firstMileTime,
+        trainLine: boarding.line,
+        trainWait: Math.round(train.waitTime),
+        trainRideTime,
+        trainDepartAbsolute: train.departureMinutes,
+        exitStation: exitName,
+        walkHome: exitInfo.walkHome,
+        totalTime,
+        arrivalTime: arrivalDate,
+        arrivalMin,
+        isRealTime: train.isRealTime || false
+      });
+    }
+  }
+
+  // Sort by total time, deduplicate by station+line
+  entries.sort((a, b) => a.totalTime - b.totalTime);
+  const seen = new Set();
+  return entries.filter(e => {
+    const key = `${e.boardingStation}|${e.trainLine}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  }).slice(0, 10);
+}
+
+function getBestInboundJourney(origin, currentTime) {
+  if (!origin) return null;
+  let best = null;
+  for (const mode of ['walk', 'ebike']) {
+    const entries = buildInboundEntries(origin, currentTime, mode);
+    if (entries.length > 0 && (!best || entries[0].arrivalMin < best.arrivalMin)) {
+      best = entries[0];
+    }
+  }
+  return best;
+}
+
+
 // ── Search (Nominatim) ─────────────────────────────────────────────────────
 
 let searchTimeout = null;
@@ -988,10 +1136,67 @@ function renderArrivals() {
   const list = document.getElementById('arrivals-list');
   const currentTime = now();
 
-  // Inbound mode — placeholder for now
+  // Inbound mode
   if (activeDirection === 'inbound') {
-    document.getElementById('recommendation').classList.add('hidden');
-    list.innerHTML = '<div class="empty-state">Inbound trips coming soon</div>';
+    if (!selectedDestination) {
+      document.getElementById('recommendation').classList.add('hidden');
+      list.innerHTML = '<div class="empty-state">Search for your current location above</div>';
+      return;
+    }
+
+    const origin = selectedDestination; // in inbound mode, "destination" is actually the origin
+    const modeMap = { bus: 'walk', ebike: 'ebike', walk: 'walk' };
+    const firstMileMode = modeMap[activeTab] || 'walk';
+    const inboundEntries = buildInboundEntries(origin, currentTime, firstMileMode);
+
+    // Inbound recommendation
+    renderInboundRecommendation(origin, currentTime);
+
+    if (inboundEntries.length === 0) {
+      list.innerHTML = '<div class="empty-state">No inbound options found from here</div>';
+      return;
+    }
+
+    list.innerHTML = inboundEntries.map((e, i) => {
+      const trainInfo = TRAIN_LINE_COLORS[e.trainLine];
+      const trainDepartTime = new Date(currentTime);
+      trainDepartTime.setHours(Math.floor(e.trainDepartAbsolute / 60), Math.round(e.trainDepartAbsolute % 60), 0, 0);
+
+      const firstMileLabel = e.firstMileMode === 'ebike'
+        ? `${WALK_TO_DOCK_MIN}m walk + ${e.firstMileTime - WALK_TO_DOCK_MIN}m bike`
+        : `${e.firstMileTime}m walk`;
+      const firstMileIcon = e.firstMileMode === 'ebike' ? '&#x1f6b2;' : '&#x1F6B6;';
+
+      return `
+        <div class="arrival-card" data-index="${i}">
+          <div class="card-top">
+            <div style="display:flex;align-items:center;gap:10px">
+              <span style="font-size:16px">${firstMileIcon}</span>
+              <span style="font-size:14px;font-weight:600">${e.boardingStation}</span>
+            </div>
+            <span style="font-size:13px;color:var(--text-dim)">${firstMileLabel}</span>
+          </div>
+          <div class="card-mid">
+            <span class="train-badge ${trainInfo.cssClass}">${e.trainLine}</span>
+            <span class="arrow">&rarr;</span>
+            <span>${e.exitStation}</span>
+            <span class="arrow">&rarr;</span>
+            <span>&#x1F3E0;</span>
+          </div>
+          <div class="card-bottom">
+            <span>Home by ${formatTime(e.arrivalTime)}</span>
+            <span class="total-time">${formatMinutes(e.totalTime)}</span>
+          </div>
+        </div>
+      `;
+    }).join('');
+
+    list.querySelectorAll('.arrival-card').forEach(card => {
+      card.addEventListener('click', () => {
+        const idx = parseInt(card.dataset.index);
+        openInboundModal(inboundEntries[idx]);
+      });
+    });
     return;
   }
 
@@ -1752,6 +1957,163 @@ function openWalkModal(entry) {
   });
 }
 
+function renderInboundRecommendation(origin, currentTime) {
+  const recEl = document.getElementById('recommendation');
+  const candidates = [];
+
+  for (const mode of ['walk', 'ebike']) {
+    const entries = buildInboundEntries(origin, currentTime, mode);
+    if (entries.length === 0) continue;
+    const e = entries[0];
+    const modeLabel = mode === 'ebike' ? 'biking' : 'walking';
+    const trainName = TRAIN_LINE_COLORS[e.trainLine].name;
+    const firstMileDesc = mode === 'ebike'
+      ? `Bike to ${e.boardingStation}`
+      : `Walk to ${e.boardingStation} (${e.firstMileTime}m)`;
+    candidates.push({
+      min: e.arrivalMin,
+      mode,
+      summary: `${firstMileDesc}, catch the ${trainName} to ${e.exitStation}, walk home. Home by ${formatTime(e.arrivalTime)}.`
+    });
+  }
+
+  if (candidates.length === 0) { recEl.classList.add('hidden'); return; }
+  candidates.sort((a, b) => a.min - b.min);
+  const winner = candidates[0];
+  const runnerUp = candidates[1];
+
+  const modeLabels = { walk: 'walking', ebike: 'biking' };
+  let detail = '';
+  if (runnerUp) {
+    const diff = Math.round(runnerUp.min - winner.min);
+    if (diff > 0) {
+      detail = `You'll be home ${diff}m sooner than ${modeLabels[runnerUp.mode]}.`;
+    }
+  }
+
+  recEl.innerHTML = `<div class="rec-label">Recommended</div><div class="rec-summary">${winner.summary}</div>${detail ? `<div class="rec-detail">${detail}</div>` : ''}`;
+  recEl.classList.remove('hidden');
+}
+
+function openInboundModal(entry) {
+  const overlay = document.getElementById('modal-overlay');
+  const content = document.getElementById('modal-content');
+  const trainInfo = TRAIN_LINE_COLORS[entry.trainLine];
+  const trainDepartTime = new Date();
+  trainDepartTime.setHours(Math.floor(entry.trainDepartAbsolute / 60), Math.round(entry.trainDepartAbsolute % 60), 0, 0);
+
+  const isEbike = entry.firstMileMode === 'ebike';
+  const headerIcon = isEbike ? '&#x1f6b2;' : '&#x1F6B6;';
+
+  content.innerHTML = `
+    <div class="journey-header">
+      <span style="font-size:22px">${headerIcon}</span>
+      <div>
+        <div class="journey-total">${formatMinutes(entry.totalTime)} to home</div>
+        <div class="journey-total-label">via ${entry.boardingStation} &middot; home by ${formatTime(entry.arrivalTime)}</div>
+      </div>
+    </div>
+
+    <div class="timeline">
+      ${isEbike ? `
+      <div class="timeline-step">
+        <div class="timeline-line">
+          <div class="timeline-dot walk"></div>
+          <div class="timeline-connector"></div>
+        </div>
+        <div class="timeline-content">
+          <div class="timeline-title">Walk to e-bike dock</div>
+          <div class="timeline-duration">${WALK_TO_DOCK_MIN} min walk</div>
+        </div>
+      </div>
+      <div class="timeline-step">
+        <div class="timeline-line">
+          <div class="timeline-dot walk"></div>
+          <div class="timeline-connector"></div>
+        </div>
+        <div class="timeline-content">
+          <div class="timeline-title">Bike to ${entry.boardingStation}</div>
+          <div class="timeline-duration">${entry.firstMileTime - WALK_TO_DOCK_MIN} min ride</div>
+        </div>
+      </div>
+      ` : `
+      <div class="timeline-step">
+        <div class="timeline-line">
+          <div class="timeline-dot walk"></div>
+          <div class="timeline-connector"></div>
+        </div>
+        <div class="timeline-content">
+          <div class="timeline-title">Walk to ${entry.boardingStation}</div>
+          <div class="timeline-duration">${entry.firstMileTime} min walk</div>
+        </div>
+      </div>
+      `}
+
+      <div class="timeline-step">
+        <div class="timeline-line">
+          <div class="timeline-dot train-${entry.trainLine.toLowerCase()}"></div>
+          <div class="timeline-connector"></div>
+        </div>
+        <div class="timeline-content">
+          <div class="timeline-title">Board <span class="train-badge ${trainInfo.cssClass}">${entry.trainLine}</span> ${trainInfo.name}</div>
+          <div class="timeline-detail">Wait ~${entry.trainWait} min</div>
+          <div class="timeline-duration">${entry.trainRideTime} min to ${entry.exitStation}</div>
+        </div>
+      </div>
+
+      <div class="timeline-step">
+        <div class="timeline-line">
+          <div class="timeline-dot walk"></div>
+          <div class="timeline-connector"></div>
+        </div>
+        <div class="timeline-content">
+          <div class="timeline-title">Exit at ${entry.exitStation}</div>
+          <div class="timeline-duration">Departs ${formatTime(trainDepartTime)}</div>
+        </div>
+      </div>
+
+      <div class="timeline-step">
+        <div class="timeline-line">
+          <div class="timeline-dot destination"></div>
+        </div>
+        <div class="timeline-content">
+          <div class="timeline-title">Walk home</div>
+          <div class="timeline-duration">${entry.walkHome} min walk</div>
+        </div>
+      </div>
+    </div>
+
+    <div id="modal-map"></div>
+  `;
+
+  overlay.classList.remove('hidden');
+
+  requestAnimationFrame(() => {
+    if (mapInstance) { mapInstance.remove(); mapInstance = null; }
+    const mapEl = document.getElementById('modal-map');
+    if (!mapEl) return;
+    mapInstance = L.map('modal-map', { zoomControl: false });
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+      attribution: '&copy; OSM &amp; CARTO', maxZoom: 18
+    }).addTo(mapInstance);
+
+    function makeIcon(color) {
+      return L.divIcon({ className: '', html: '<div style="width:14px;height:14px;border-radius:50%;background:' + color + ';border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,0.5)"></div>', iconSize: [14, 14], iconAnchor: [7, 7] });
+    }
+
+    const markers = [
+      L.marker([entry.boardingCoords.lat, entry.boardingCoords.lng], { icon: makeIcon(trainInfo.color) }).bindPopup(entry.boardingStation),
+      L.marker([HOME_STOP.lat, HOME_STOP.lng], { icon: makeIcon('#64b5f6') }).bindPopup('Home')
+    ];
+    const exitCoords = MUNI_STATIONS[entry.exitStation];
+    if (exitCoords) {
+      markers.push(L.marker([exitCoords.lat, exitCoords.lng], { icon: makeIcon('#66bb6a') }).bindPopup('Exit: ' + entry.exitStation));
+    }
+    markers.forEach(m => m.addTo(mapInstance));
+    mapInstance.fitBounds(L.latLngBounds(markers.map(m => m.getLatLng())), { padding: [30, 30] });
+  });
+}
+
 function closeModal() {
   document.getElementById('modal-overlay').classList.add('hidden');
   if (mapInstance) {
@@ -1872,13 +2234,26 @@ document.addEventListener('DOMContentLoaded', () => {
     setTimeout(() => container.remove(), 2000);
   }
 
-  function enterApp(direction) {
+  async function enterApp(direction) {
     activeDirection = direction;
     input.placeholder = direction === 'inbound' ? 'Where are you coming from?' : 'Where are you going?';
-    setTimeout(() => {
+    setTimeout(async () => {
       landing.classList.add('hidden');
       app.classList.remove('hidden');
-      refreshAndRender();
+
+      if (direction === 'inbound') {
+        // Detect location and prefill
+        document.getElementById('arrivals-list').innerHTML = '<div class="empty-state">Detecting your location...</div>';
+        try {
+          const pos = await getCurrentPosition();
+          const geo = await reverseGeocode(pos.lat, pos.lng);
+          input.value = geo.short;
+          selectDestination({ ...geo, lat: pos.lat, lng: pos.lng });
+        } catch (err) {
+          document.getElementById('arrivals-list').innerHTML = '<div class="empty-state">Could not detect location. Search above.</div>';
+        }
+      }
+      await refreshAndRender();
     }, 400);
   }
 
@@ -1892,6 +2267,10 @@ document.addEventListener('DOMContentLoaded', () => {
   backBtn.addEventListener('click', () => {
     app.classList.add('hidden');
     landing.classList.remove('hidden');
+    selectedDestination = null;
+    input.value = '';
+    destDisplay.classList.add('hidden');
+    document.getElementById('recommendation').classList.add('hidden');
   });
 
   // Tabs
@@ -1961,7 +2340,8 @@ document.addEventListener('DOMContentLoaded', () => {
     selectedDestination = dest;
     input.value = dest.short;
     suggestionsEl.classList.add('hidden');
-    destDisplay.innerHTML = `<span class="dest-label">To</span> ${dest.short}${dest.context ? ', ' + dest.context : ''}<button id="clear-dest" style="margin-left:auto;background:none;border:none;color:var(--text-dim);cursor:pointer;font-size:16px;padding:0 4px" aria-label="Clear destination">&times;</button>`;
+    const label = activeDirection === 'inbound' ? 'From' : 'To';
+    destDisplay.innerHTML = `<span class="dest-label">${label}</span> ${dest.short}${dest.context ? ', ' + dest.context : ''}<button id="clear-dest" style="margin-left:auto;background:none;border:none;color:var(--text-dim);cursor:pointer;font-size:16px;padding:0 4px" aria-label="Clear destination">&times;</button>`;
     destDisplay.classList.remove('hidden');
     document.getElementById('clear-dest').addEventListener('click', () => {
       selectedDestination = null;
