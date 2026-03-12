@@ -2359,39 +2359,58 @@ document.addEventListener('DOMContentLoaded', () => {
     const icon = card.querySelector('.landing-icon');
     if (!icon) { callback(); return; }
 
-    // Clone the rocket and position it fixed over the original
     const rect = icon.getBoundingClientRect();
     const clone = document.createElement('div');
     clone.textContent = icon.textContent;
     clone.style.cssText = `
       position:fixed;left:${rect.left}px;top:${rect.top}px;
       font-size:${rect.height}px;line-height:1;
-      z-index:9999;pointer-events:none;
-      transition: transform 0.6s cubic-bezier(0.4,0,0.2,1), opacity 0.6s ease;
+      z-index:9999;pointer-events:none;will-change:transform,opacity;
     `;
     document.body.appendChild(clone);
-
-    // Hide the original icon
     icon.style.opacity = '0';
 
     // Fade out landing page
-    landing.style.transition = 'opacity 0.45s ease';
+    landing.style.transition = 'opacity 0.5s ease';
     landing.style.opacity = '0';
 
-    // Fly the rocket: up and slightly to center, then off the top
-    requestAnimationFrame(() => {
-      const centerX = window.innerWidth / 2 - rect.left - rect.width / 2;
-      clone.style.transform = `translate(${centerX}px, ${-(rect.top + rect.height + 60)}px) scale(1.8) rotate(-20deg)`;
-      clone.style.opacity = '0.2';
-    });
+    // Animate with meandering sine-wave path
+    const duration = 700; // ms
+    const startX = rect.left;
+    const startY = rect.top;
+    const endY = -(rect.height + 80); // off the top
+    const centerX = window.innerWidth / 2 - rect.width / 2;
+    const driftX = centerX - startX; // drift toward center
+    const wobbleAmp = 30; // px side-to-side
+    const wobbleFreq = 2.5; // full oscillations
+    const startTime = performance.now();
 
-    setTimeout(() => {
-      clone.remove();
-      icon.style.opacity = '';
-      landing.style.transition = '';
-      landing.style.opacity = '';
-      callback();
-    }, 600);
+    function frame(now) {
+      const elapsed = now - startTime;
+      const t = Math.min(elapsed / duration, 1);
+      // Ease-in curve for acceleration
+      const ease = t * t;
+
+      const y = startY + (endY - startY) * ease;
+      const x = startX + driftX * ease + Math.sin(t * wobbleFreq * Math.PI * 2) * wobbleAmp * (1 - t * 0.5);
+      const scale = 1 + ease * 0.9;
+      const rotate = -15 + Math.sin(t * wobbleFreq * Math.PI * 2) * 12;
+      const opacity = 1 - t * 0.8;
+
+      clone.style.transform = `translate(${x - startX}px, ${y - startY}px) scale(${scale}) rotate(${rotate}deg)`;
+      clone.style.opacity = opacity;
+
+      if (t < 1) {
+        requestAnimationFrame(frame);
+      } else {
+        clone.remove();
+        icon.style.opacity = '';
+        landing.style.transition = '';
+        landing.style.opacity = '';
+        callback();
+      }
+    }
+    requestAnimationFrame(frame);
   }
 
   function thudHome(card) {
