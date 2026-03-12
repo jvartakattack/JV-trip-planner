@@ -282,22 +282,10 @@ h1 {
   color: var(--text-dim);
 }
 
-.lucky-btn {
-  background: none;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 12px 32px;
-  color: var(--accent);
-  font-size: 15px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: background 0.15s, border-color 0.15s;
-  -webkit-tap-highlight-color: transparent;
-}
-
-.lucky-btn:hover {
-  background: var(--surface);
-  border-color: var(--accent);
+/* ── Confetti ────────────────────────────────────────── */
+@keyframes confetti-fall {
+  0% { transform: translateY(0) translateX(0) rotate(0deg); opacity: 1; }
+  100% { transform: translateY(100vh) translateX(var(--drift)) rotate(var(--spin)); opacity: 0; }
 }
 
 /* ── Back Button ─────────────────────────────────────── */

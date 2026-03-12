@@ -1836,35 +1836,55 @@ document.addEventListener('DOMContentLoaded', () => {
   const landing = document.getElementById('landing');
   const app = document.getElementById('app');
   const backBtn = document.getElementById('back-btn');
-  const luckyBtn = document.getElementById('lucky-btn');
 
-  const luckyLabels = [
-    'Hit me!', "I'm feeling lucky", 'Surprise me!', 'Let\u2019s roll!',
-    'Yolo', 'Take me anywhere', 'Spin the wheel', 'Just go!',
-    'Wing it', 'Dealer\u2019s choice', 'Random vibes', 'Send it!'
-  ];
-  luckyBtn.textContent = luckyLabels[Math.floor(Math.random() * luckyLabels.length)];
+  function fireConfetti() {
+    const colors = ['#64b5f6', '#66bb6a', '#ffa726', '#ef5350', '#9b59b6', '#d4a017', '#009bdf'];
+    const container = document.createElement('div');
+    container.style.cssText = 'position:fixed;inset:0;pointer-events:none;z-index:9999;overflow:hidden';
+    document.body.appendChild(container);
+
+    for (let i = 0; i < 80; i++) {
+      const piece = document.createElement('div');
+      const size = Math.random() * 8 + 4;
+      const x = Math.random() * 100;
+      const color = colors[Math.floor(Math.random() * colors.length)];
+      const delay = Math.random() * 0.3;
+      const drift = (Math.random() - 0.5) * 60;
+      const spin = Math.random() * 720 - 360;
+      const duration = Math.random() * 0.8 + 1;
+
+      piece.style.cssText = `
+        position:absolute;top:-10px;left:${x}%;
+        width:${size}px;height:${size * 1.4}px;
+        background:${color};border-radius:1px;
+        opacity:1;
+        animation:confetti-fall ${duration}s ${delay}s ease-in forwards;
+        --drift:${drift}px;--spin:${spin}deg;
+      `;
+      container.appendChild(piece);
+    }
+
+    setTimeout(() => container.remove(), 2000);
+  }
 
   function enterApp(direction) {
     activeDirection = direction;
     input.placeholder = direction === 'inbound' ? 'Where are you coming from?' : 'Where are you going?';
-    landing.classList.add('hidden');
-    app.classList.remove('hidden');
-    refreshAndRender();
+    fireConfetti();
+    setTimeout(() => {
+      landing.classList.add('hidden');
+      app.classList.remove('hidden');
+      refreshAndRender();
+    }, 400);
   }
 
   document.querySelectorAll('.landing-card').forEach(card => {
     card.addEventListener('click', () => enterApp(card.dataset.direction));
   });
 
-  luckyBtn.addEventListener('click', () => {
-    enterApp(Math.random() < 0.5 ? 'outbound' : 'inbound');
-  });
-
   backBtn.addEventListener('click', () => {
     app.classList.add('hidden');
     landing.classList.remove('hidden');
-    luckyBtn.textContent = luckyLabels[Math.floor(Math.random() * luckyLabels.length)];
   });
 
   // Tabs
