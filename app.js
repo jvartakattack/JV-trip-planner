@@ -599,8 +599,16 @@ const GBFS_STATION_STATUS_URL = 'https://gbfs.lyft.com/gbfs/2.3/bay/en/station_s
 const WEST_PORTAL_DOCK_ID = '2114365359206953814'; // "West Portal MUNI" dock
 const EBIKE_RIDE_HOME_MIN = 5; // West Portal → home by e-bike
 
+// Home-area Bay Wheels docks (24th Ave at Quintara & 21st Ave at Noriega)
+// These are new docks not yet in the GBFS feed — matched by proximity at runtime
+const HOME_DOCKS = [
+  { name: '24th Ave at Quintara St', lat: 37.7493, lng: -122.4830 },
+  { name: '21st Ave at Noriega St',  lat: 37.7535, lng: -122.4800 }
+];
+const HOME_DOCK_SEARCH_RADIUS_KM = 0.4; // match GBFS stations within 400m of known dock
+
 // Unified e-bike availability state
-let ebikeAvailability = { westPortal: null, home: null, lastChecked: 0 };
+let ebikeAvailability = { westPortal: null, home: null, homeDocks: [], lastChecked: 0 };
 let bayWheelsStationCache = null;
 
 function getEbikeCountFromStatus(status) {
@@ -630,16 +638,26 @@ async function refreshEbikeAvailability() {
     // West Portal availability
     ebikeAvailability.westPortal = getEbikeCountFromStatus(statusMap[WEST_PORTAL_DOCK_ID]);
 
-    // Home-area availability: find closest 3 docks and sum e-bikes
+    // Home-area availability: match GBFS stations to known home docks by proximity
+    let homeTotal = 0;
+    const dockDetails = [];
     if (bayWheelsStationCache) {
-      const nearby = bayWheelsStationCache
-        .map(s => ({ id: String(s.station_id), dist: haversineDistanceRaw(HOME_STOP.lat, HOME_STOP.lng, s.lat, s.lon) }))
-        .sort((a, b) => a.dist - b.dist)
-        .slice(0, 3);
-      let total = 0;
-      for (const s of nearby) total += getEbikeCountFromStatus(statusMap[s.id]);
-      ebikeAvailability.home = total;
+      for (const dock of HOME_DOCKS) {
+        // Find closest GBFS station to this dock location
+        let best = null;
+        for (const s of bayWheelsStationCache) {
+          const dist = haversineDistanceRaw(dock.lat, dock.lng, s.lat, s.lon);
+          if (dist <= HOME_DOCK_SEARCH_RADIUS_KM && (!best || dist < best.dist)) {
+            best = { id: String(s.station_id), name: s.name, dist };
+          }
+        }
+        const count = best ? getEbikeCountFromStatus(statusMap[best.id]) : 0;
+        homeTotal += count;
+        dockDetails.push({ name: dock.name, ebikes: count, matched: !!best });
+      }
     }
+    ebikeAvailability.home = homeTotal;
+    ebikeAvailability.homeDocks = dockDetails;
 
     ebikeAvailability.lastChecked = Date.now();
   } catch { /* fail silently */ }
