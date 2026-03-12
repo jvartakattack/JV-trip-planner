@@ -1165,19 +1165,19 @@ function renderRecommendation(currentTime) {
       const busLeaveIn = Math.max(0, bestBus.busEta - (bestBus.walkToStop || 0));
       const busLeaveNote = busLeaveIn <= 0 ? 'Leave now' : `Leave in ${busLeaveIn}m`;
       const trainName = TRAIN_LINE_COLORS[bestBus.trainLine].name;
-      candidates.push({ min: bestBus.arrivalMin, mode: 'bus', journey: bestBus,
+      candidates.push({ min: bestBus.arrivalMin, mode: 'bus', modeCount: 3, journey: bestBus,
         summary: `${busLeaveNote} — take the ${bestBus.busRoute} to ${bestBus.transferStation}, catch the ${trainName} to ${bestBus.exitStation}. Arrive by ${formatTime(bestBus.arrivalTime)}.`
       });
     }
     if (bestBike) {
       const trainName = TRAIN_LINE_COLORS[bestBike.trainLine].name;
-      candidates.push({ min: bestBike.arrivalMin, mode: 'ebike', journey: bestBike,
+      candidates.push({ min: bestBike.arrivalMin, mode: 'ebike', modeCount: 3, journey: bestBike,
         summary: `Pick up e-bike near home, bike to ${bestBike.stationName}, catch the ${trainName} to ${bestBike.exitStation}. Arrive by ${formatTime(bestBike.arrivalTime)}.`
       });
     }
     if (bestWalk) {
       const trainName = TRAIN_LINE_COLORS[bestWalk.trainLine].name;
-      candidates.push({ min: bestWalk.arrivalMin, mode: 'walk', journey: bestWalk,
+      candidates.push({ min: bestWalk.arrivalMin, mode: 'walk', modeCount: 2, journey: bestWalk,
         summary: `Walk to ${bestWalk.stationName}, catch the ${trainName} to ${bestWalk.exitStation}. Arrive by ${formatTime(bestWalk.arrivalTime)}.`
       });
     }
@@ -1186,19 +1186,19 @@ function renderRecommendation(currentTime) {
       const busLeaveIn = Math.max(0, bestBus.busEta - (bestBus.walkToStop || 0));
       const busLeaveNote = busLeaveIn <= 0 ? 'Leave now' : `Leave in ${busLeaveIn}m`;
       const trainName = TRAIN_LINE_COLORS[bestBus.trainLine].name;
-      candidates.push({ min: bestBus.trainDepartMin, mode: 'bus', journey: bestBus,
+      candidates.push({ min: bestBus.trainDepartMin, mode: 'bus', modeCount: 3, journey: bestBus,
         summary: `${busLeaveNote} — take the ${bestBus.busRoute} to ${bestBus.transferStation}, catch the ${trainName} at ${formatTime(bestBus.departTime)}.`
       });
     }
     if (bestBike) {
       const trainName = TRAIN_LINE_COLORS[bestBike.trainLine].name;
-      candidates.push({ min: bestBike.trainDepartMin, mode: 'ebike', journey: bestBike,
+      candidates.push({ min: bestBike.trainDepartMin, mode: 'ebike', modeCount: 3, journey: bestBike,
         summary: `Pick up e-bike near home, bike to ${bestBike.stationName}, catch the ${trainName} at ${formatTime(bestBike.departTime)}.`
       });
     }
     if (bestWalk) {
       const trainName = TRAIN_LINE_COLORS[bestWalk.trainLine].name;
-      candidates.push({ min: bestWalk.trainDepartMin, mode: 'walk', journey: bestWalk,
+      candidates.push({ min: bestWalk.trainDepartMin, mode: 'walk', modeCount: 2, journey: bestWalk,
         summary: `Walk to ${bestWalk.stationName}, catch the ${trainName} at ${formatTime(bestWalk.departTime)}.`
       });
     }
@@ -1206,17 +1206,17 @@ function renderRecommendation(currentTime) {
 
   if (candidates.length === 0) { recEl.classList.add('hidden'); return; }
 
-  candidates.sort((a, b) => a.min - b.min);
+  candidates.sort((a, b) => a.min - b.min || a.modeCount - b.modeCount);
   const winner = candidates[0];
   const runnerUp = candidates[1];
 
-  const modeLabels = { bus: 'the bus', ebike: 'biking', walk: 'walking' };
+  const modeAlts = { bus: 'took the bus', ebike: 'biked', walk: 'walked' };
   let detail = '';
   if (runnerUp) {
     const diff = Math.round(runnerUp.min - winner.min);
     if (diff > 0) {
-      const comparison = selectedDestination ? `arrive ${diff}min sooner than if you took` : `be on a train ${diff}min sooner than if you took`;
-      detail = `You'll ${comparison} ${modeLabels[runnerUp.mode]}.`;
+      const comparison = selectedDestination ? `arrive ${diff}min sooner` : `be on a train ${diff}min sooner`;
+      detail = `You'll ${comparison} than if you ${modeAlts[runnerUp.mode]}.`;
     }
   }
 
@@ -2122,9 +2122,11 @@ function renderInboundRecommendation(origin, currentTime) {
     if (e.lastMileMode === 'ebike' && ebikeAvailability.westPortal !== null) {
       availParts.push(`${ebikeAvailability.westPortal} e-bike${ebikeAvailability.westPortal !== 1 ? 's' : ''} available at West Portal`);
     }
+    const modeTypes = new Set([mode, 'train', e.lastMileMode || 'walk']);
     candidates.push({
       min: e.arrivalMin,
       mode: `${mode}-${e.lastMileMode || 'walk'}`,
+      modeCount: modeTypes.size,
       entry: e,
       summary: `${firstMileDesc}, catch the ${trainName} to ${e.exitStation}, ${lastMileDesc}. Home by ${formatTime(e.arrivalTime)}.`,
       availHtml: availParts.length > 0 ? availParts.join(' · ') : ''
@@ -2132,7 +2134,7 @@ function renderInboundRecommendation(origin, currentTime) {
   }
 
   if (candidates.length === 0) { recEl.classList.add('hidden'); return; }
-  candidates.sort((a, b) => a.min - b.min);
+  candidates.sort((a, b) => a.min - b.min || a.modeCount - b.modeCount);
   const winner = candidates[0];
   const runnerUp = candidates.find(c => c.min > winner.min);
 
