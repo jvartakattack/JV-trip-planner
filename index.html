@@ -18,11 +18,15 @@
   <div id="app">
     <header>
       <div class="header-top">
-        <h1>Transit Board</h1>
+        <h1>JV Trips</h1>
         <div style="display:flex;align-items:center;gap:12px">
           <div id="live-badge" class="live-badge hidden">LIVE</div>
           <div id="clock" class="clock"></div>
         </div>
+      </div>
+      <div class="direction-toggle">
+        <button class="direction-btn active" data-direction="outbound">Outbound</button>
+        <button class="direction-btn" data-direction="inbound">Inbound</button>
       </div>
       <div class="search-container">
         <input

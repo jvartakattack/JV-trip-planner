@@ -605,6 +605,7 @@ let selectedDestination = null;
 let journeys = [];
 let mapInstance = null;
 let activeTab = 'bus';
+let activeDirection = 'outbound';
 
 function updateClock() {
   const el = document.getElementById('clock');
@@ -986,6 +987,13 @@ function getDelayBadge(routeOrLine, delays) {
 function renderArrivals() {
   const list = document.getElementById('arrivals-list');
   const currentTime = now();
+
+  // Inbound mode — placeholder for now
+  if (activeDirection === 'inbound') {
+    document.getElementById('recommendation').classList.add('hidden');
+    list.innerHTML = '<div class="empty-state">Inbound trips coming soon</div>';
+    return;
+  }
 
   renderRecommendation(currentTime);
 
@@ -1826,6 +1834,17 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Initial fetch
   refreshAndRender();
+
+  // Direction toggle
+  document.querySelectorAll('.direction-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.direction-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      activeDirection = btn.dataset.direction;
+      input.placeholder = activeDirection === 'inbound' ? 'Where are you coming from?' : 'Where are you going?';
+      renderArrivals();
+    });
+  });
 
   // Tabs
   document.querySelectorAll('.tab').forEach(tab => {
