@@ -163,7 +163,6 @@ h1 {
 /* ── Recommendation ──────────────────────────────────── */
 .recommendation {
   margin-top: 14px;
-  padding: 14px 16px;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius);
@@ -171,6 +170,7 @@ h1 {
   line-height: 1.5;
   cursor: pointer;
   transition: background 0.15s, border-color 0.15s;
+  overflow: hidden;
 }
 .recommendation:active {
   background: var(--border);
@@ -178,6 +178,38 @@ h1 {
 }
 
 .recommendation.hidden { display: none; }
+
+.rec-track {
+  display: flex;
+  transition: transform 0.3s ease;
+}
+
+.rec-slide {
+  min-width: 100%;
+  padding: 14px 16px;
+  box-sizing: border-box;
+}
+
+.rec-dots {
+  display: flex;
+  justify-content: center;
+  gap: 6px;
+  padding: 0 0 10px;
+}
+
+.rec-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--text-dim);
+  opacity: 0.3;
+  transition: opacity 0.2s;
+}
+
+.rec-dot.active {
+  opacity: 1;
+  background: var(--accent);
+}
 
 .recommendation .rec-label {
   font-size: 11px;
@@ -225,6 +257,7 @@ h1 {
   font-weight: 600;
   cursor: pointer;
   transition: background 0.2s, color 0.2s;
+  position: relative;
 }
 
 .tab:hover { color: var(--text); }
@@ -233,6 +266,15 @@ h1 {
   background: var(--surface-hover);
   color: var(--text);
   box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+}
+
+.tab-rec {
+  display: block;
+  font-size: 9px;
+  font-weight: 500;
+  color: var(--accent);
+  letter-spacing: 0.3px;
+  margin-top: 1px;
 }
 
 /* ── Landing Screen ──────────────────────────────────── */

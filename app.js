@@ -1148,16 +1148,13 @@ function getBestBusJourney(currentTime, destination) {
   }
 }
 
-function renderRecommendation(currentTime) {
-  const recEl = document.getElementById('recommendation');
-
+function getOutboundWinner(currentTime) {
   const bestBus = getBestBusJourney(currentTime, selectedDestination);
   const bestBike = getBestBikeJourney(currentTime, selectedDestination);
   const bestWalk = getBestWalkJourney(currentTime, selectedDestination);
 
-  if (!bestBus && !bestBike && !bestWalk) { recEl.classList.add('hidden'); return; }
+  if (!bestBus && !bestBike && !bestWalk) return null;
 
-  // Build candidate descriptions keyed by arrival or departure time
   const candidates = [];
 
   if (selectedDestination) {
@@ -1204,7 +1201,7 @@ function renderRecommendation(currentTime) {
     }
   }
 
-  if (candidates.length === 0) { recEl.classList.add('hidden'); return; }
+  if (candidates.length === 0) return null;
 
   candidates.sort((a, b) => a.min - b.min || a.modeCount - b.modeCount);
   const winner = candidates[0];
@@ -1220,21 +1217,76 @@ function renderRecommendation(currentTime) {
     }
   }
 
-  const availLine = winner.availHtml ? `<div class="rec-avail">${winner.availHtml}</div>` : '';
-  recEl.innerHTML = `<div class="rec-label">Recommended</div><div class="rec-summary">${winner.summary}</div>${availLine}${detail ? `<div class="rec-detail">${detail}</div>` : ''}`;
-  recEl.style.cursor = 'pointer';
+  return { ...winner, detail };
+}
+
+function renderRecommendation(currentTime) {
+  const recEl = document.getElementById('recommendation');
+  const offsets = [0, 5, 10];
+  const labels = ['Leave now', 'In 5 minutes', 'In 10 minutes'];
+  const cards = [];
+
+  for (let i = 0; i < offsets.length; i++) {
+    const t = new Date(currentTime.getTime() + offsets[i] * 60000);
+    const w = getOutboundWinner(t);
+    if (w) cards.push({ label: labels[i], winner: w });
+  }
+
+  if (cards.length === 0) { recEl.classList.add('hidden'); return; }
+
+  let dotsHtml = '';
+  if (cards.length > 1) {
+    dotsHtml = `<div class="rec-dots">${cards.map((_, i) => `<span class="rec-dot${i === 0 ? ' active' : ''}"></span>`).join('')}</div>`;
+  }
+
+  const slidesHtml = cards.map(c => {
+    const availLine = c.winner.availHtml ? `<div class="rec-avail">${c.winner.availHtml}</div>` : '';
+    const detailLine = c.winner.detail ? `<div class="rec-detail">${c.winner.detail}</div>` : '';
+    return `<div class="rec-slide"><div class="rec-label">${c.label}</div><div class="rec-summary">${c.winner.summary}</div>${availLine}${detailLine}</div>`;
+  }).join('');
+
+  recEl.innerHTML = `<div class="rec-track">${slidesHtml}</div>${dotsHtml}`;
   recEl.classList.remove('hidden');
+
+  // Swipe logic
+  const track = recEl.querySelector('.rec-track');
+  const dots = recEl.querySelectorAll('.rec-dot');
+  let currentSlide = 0;
+
+  function goToSlide(idx) {
+    currentSlide = idx;
+    track.style.transform = `translateX(-${idx * 100}%)`;
+    dots.forEach((d, i) => d.classList.toggle('active', i === idx));
+    const tabMode = cards[idx].winner.mode.split('-')[0];
+    switchToTab(tabMode);
+  }
+
+  let swipeStartX = 0;
+  recEl.addEventListener('touchstart', e => { swipeStartX = e.touches[0].clientX; }, { passive: true });
+  recEl.addEventListener('touchend', e => {
+    const dx = e.changedTouches[0].clientX - swipeStartX;
+    if (Math.abs(dx) > 40) {
+      if (dx < 0 && currentSlide < cards.length - 1) goToSlide(currentSlide + 1);
+      else if (dx > 0 && currentSlide > 0) goToSlide(currentSlide - 1);
+    }
+  });
+
+  // Tap to open modal
+  recEl.style.cursor = 'pointer';
   recEl.onclick = () => {
-    const j = winner.journey;
-    if (winner.mode === 'bus') {
+    const w = cards[currentSlide].winner;
+    const j = w.journey;
+    if (w.mode === 'bus') {
       selectedDestination ? openBusDestModal(j) : openDefaultBusModal(j);
-    } else if (winner.mode === 'ebike') {
+    } else if (w.mode === 'ebike') {
       const stationData = MUNI_STATIONS[j.stationName];
       openEbikeModal({ ...j, stationCoords: stationData ? { lat: stationData.lat, lng: stationData.lng } : null });
     } else {
       openWalkModal(j);
     }
   };
+
+  switchToTab(cards[0].winner.mode);
 }
 
 function renderAlertsBanner(delays, alerts) {
@@ -2099,14 +2151,12 @@ function openWalkModal(entry) {
   });
 }
 
-function renderInboundRecommendation(origin, currentTime) {
-  const recEl = document.getElementById('recommendation');
+function getInboundWinner(origin, currentTime) {
   const candidates = [];
 
   for (const mode of ['walk', 'ebike']) {
     const entries = buildInboundEntries(origin, currentTime, mode);
     if (entries.length === 0) continue;
-    // The best entry already factors in e-bike last mile if available
     const e = entries[0];
     const trainName = TRAIN_LINE_COLORS[e.trainLine].name;
     const dockLabel = e.dockName ? ` at ${e.dockName}` : '';
@@ -2114,7 +2164,6 @@ function renderInboundRecommendation(origin, currentTime) {
       ? `Pick up e-bike${dockLabel}, bike to ${e.boardingStation}`
       : `Walk to ${e.boardingStation}`;
     const lastMileDesc = e.lastMileMode === 'ebike' ? 'e-bike home' : 'walk home';
-    // Build availability line for e-bike legs
     const availParts = [];
     if (mode === 'ebike' && e.dockEbikes !== null && e.dockName) {
       availParts.push(`${e.dockEbikes} e-bike${e.dockEbikes !== 1 ? 's' : ''} available at ${e.dockName}`);
@@ -2133,7 +2182,7 @@ function renderInboundRecommendation(origin, currentTime) {
     });
   }
 
-  if (candidates.length === 0) { recEl.classList.add('hidden'); return; }
+  if (candidates.length === 0) return null;
   candidates.sort((a, b) => a.min - b.min || a.modeCount - b.modeCount);
   const winner = candidates[0];
   const runnerUp = candidates.find(c => c.min > winner.min);
@@ -2146,13 +2195,65 @@ function renderInboundRecommendation(origin, currentTime) {
     }
   }
 
-  const availLine = winner.availHtml ? `<div class="rec-avail">${winner.availHtml}</div>` : '';
-  recEl.innerHTML = `<div class="rec-label">Recommended</div><div class="rec-summary">${winner.summary}</div>${availLine}${detail ? `<div class="rec-detail">${detail}</div>` : ''}`;
-  recEl.style.cursor = 'pointer';
+  return { ...winner, detail };
+}
+
+function renderInboundRecommendation(origin, currentTime) {
+  const recEl = document.getElementById('recommendation');
+  const offsets = [0, 5, 10];
+  const labels = ['Leave now', 'In 5 minutes', 'In 10 minutes'];
+  const cards = [];
+
+  for (let i = 0; i < offsets.length; i++) {
+    const t = new Date(currentTime.getTime() + offsets[i] * 60000);
+    const w = getInboundWinner(origin, t);
+    if (w) cards.push({ label: labels[i], winner: w });
+  }
+
+  if (cards.length === 0) { recEl.classList.add('hidden'); return; }
+
+  let dotsHtml = '';
+  if (cards.length > 1) {
+    dotsHtml = `<div class="rec-dots">${cards.map((_, i) => `<span class="rec-dot${i === 0 ? ' active' : ''}"></span>`).join('')}</div>`;
+  }
+
+  const slidesHtml = cards.map(c => {
+    const availLine = c.winner.availHtml ? `<div class="rec-avail">${c.winner.availHtml}</div>` : '';
+    const detailLine = c.winner.detail ? `<div class="rec-detail">${c.winner.detail}</div>` : '';
+    return `<div class="rec-slide"><div class="rec-label">${c.label}</div><div class="rec-summary">${c.winner.summary}</div>${availLine}${detailLine}</div>`;
+  }).join('');
+
+  recEl.innerHTML = `<div class="rec-track">${slidesHtml}</div>${dotsHtml}`;
   recEl.classList.remove('hidden');
+
+  const track = recEl.querySelector('.rec-track');
+  const dots = recEl.querySelectorAll('.rec-dot');
+  let currentSlide = 0;
+
+  function goToSlide(idx) {
+    currentSlide = idx;
+    track.style.transform = `translateX(-${idx * 100}%)`;
+    dots.forEach((d, i) => d.classList.toggle('active', i === idx));
+    const tabMode = cards[idx].winner.mode.split('-')[0];
+    switchToTab(tabMode);
+  }
+
+  let swipeStartX = 0;
+  recEl.addEventListener('touchstart', e => { swipeStartX = e.touches[0].clientX; }, { passive: true });
+  recEl.addEventListener('touchend', e => {
+    const dx = e.changedTouches[0].clientX - swipeStartX;
+    if (Math.abs(dx) > 40) {
+      if (dx < 0 && currentSlide < cards.length - 1) goToSlide(currentSlide + 1);
+      else if (dx > 0 && currentSlide > 0) goToSlide(currentSlide - 1);
+    }
+  });
+
+  recEl.style.cursor = 'pointer';
   recEl.onclick = () => {
-    openInboundModal(winner.entry);
+    openInboundModal(cards[currentSlide].winner.entry);
   };
+
+  switchToTab(cards[0].winner.mode.split('-')[0]);
 }
 
 function openInboundModal(entry) {
@@ -2570,6 +2671,24 @@ document.addEventListener('DOMContentLoaded', () => {
   }, { passive: true });
 
   // Tabs
+  window.switchToTab = switchToTab;
+  function switchToTab(mode) {
+    document.querySelectorAll('.tab').forEach(t => {
+      t.classList.remove('active');
+      t.querySelector('.tab-rec')?.remove();
+    });
+    const target = document.querySelector(`.tab[data-tab="${mode}"]`);
+    if (target) {
+      target.classList.add('active');
+      const badge = document.createElement('span');
+      badge.className = 'tab-rec';
+      badge.textContent = 'Recommended';
+      target.appendChild(badge);
+    }
+    activeTab = mode;
+    renderArrivals();
+  }
+
   document.querySelectorAll('.tab').forEach(tab => {
     tab.addEventListener('click', () => {
       document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
