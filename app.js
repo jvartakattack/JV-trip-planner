@@ -2437,46 +2437,53 @@ document.addEventListener('DOMContentLoaded', () => {
     const dropDist = floor - startY;
     const offScreenX = window.innerWidth + 60;
 
-    // Phase 1: drop to floor (0 → 0.3)
-    // Phase 2: bounce 1 — high, rightward (0.3 → 0.5)
-    // Phase 3: bounce 2 — medium (0.5 → 0.7)
-    // Phase 4: bounce 3 — small, tumbles off right (0.7 → 1.0)
-    const duration = 1100;
+    // Phase 1: drop to floor (0 → 0.25)
+    // Phase 2: bounce 1 — high, rightward (0.25 → 0.50)
+    // Phase 3: bounce 2 — medium (0.50 → 0.72)
+    // Phase 4: bounce 3 — small, tumbles off right (0.72 → 1.0)
+    const duration = 1800;
     const startTime = performance.now();
+    let callbackFired = false;
 
     function frame(now) {
       const elapsed = now - startTime;
       const t = Math.min(elapsed / duration, 1);
       let x = 0, y = 0, rotate = 0, opacity = 1;
 
-      if (t < 0.3) {
+      if (t < 0.25) {
         // Drop: accelerate downward
-        const p = t / 0.3;
-        const ease = p * p; // gravity-like
+        const p = t / 0.25;
+        const ease = p * p;
         y = dropDist * ease;
         rotate = p * 5;
-      } else if (t < 0.5) {
-        // Bounce 1: arc up then back to floor, move right
-        const p = (t - 0.3) / 0.2;
+      } else if (t < 0.50) {
+        // Bounce 1: high arc, move right
+        const p = (t - 0.25) / 0.25;
         const arc = Math.sin(p * Math.PI);
         y = dropDist - arc * dropDist * 0.35;
         x = p * 80;
         rotate = 5 + p * 10;
-      } else if (t < 0.7) {
-        // Bounce 2: smaller arc, more rightward
-        const p = (t - 0.5) / 0.2;
+      } else if (t < 0.72) {
+        // Bounce 2: medium arc, more rightward
+        const p = (t - 0.50) / 0.22;
         const arc = Math.sin(p * Math.PI);
         y = dropDist - arc * dropDist * 0.15;
         x = 80 + p * 100;
         rotate = 15 + p * 15;
       } else {
-        // Bounce 3: tiny bounce, tumble off right edge
-        const p = (t - 0.7) / 0.3;
+        // Bounce 3: small bounce, tumble off right edge
+        const p = (t - 0.72) / 0.28;
         const arc = Math.sin(p * Math.PI * 0.7);
         y = dropDist - arc * dropDist * 0.06;
         x = 180 + p * (offScreenX - startX);
         rotate = 30 + p * 90;
         opacity = 1 - Math.max(0, (p - 0.5) * 2);
+      }
+
+      // Fire callback after first bounce lands so app loads underneath
+      if (t >= 0.50 && !callbackFired) {
+        callbackFired = true;
+        callback();
       }
 
       clone.style.transform = `translate(${x}px, ${y}px) rotate(${rotate}deg)`;
@@ -2487,9 +2494,6 @@ document.addEventListener('DOMContentLoaded', () => {
       } else {
         clone.remove();
         icon.style.opacity = '';
-        landing.style.transition = '';
-        landing.style.opacity = '';
-        callback();
       }
     }
     requestAnimationFrame(frame);
