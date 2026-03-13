@@ -1190,8 +1190,16 @@ function renderRecCards(recEl, cards, isInbound) {
   const activeWinner = cards[activeIdx].winner;
   recEl._highlightKey = entryKey(activeWinner.journey || activeWinner.entry);
   // Switch tab to match winner's mode (unless user manually picked a tab)
-  if (!isInbound && tabFollowsRec && activeWinner.mode) {
-    activeTab = activeWinner.mode;
+  if (tabFollowsRec && activeWinner.mode) {
+    let targetTab;
+    if (isInbound) {
+      // Inbound mode is "firstMile-lastMile" e.g. "ebike-walk", "walk-ebike"
+      const firstMile = activeWinner.mode.split('-')[0];
+      targetTab = firstMile === 'ebike' ? 'ebike' : 'bus';
+    } else {
+      targetTab = activeWinner.mode;
+    }
+    activeTab = targetTab;
     document.querySelectorAll('.tab').forEach(t => {
       t.classList.toggle('active', t.dataset.tab === activeTab);
     });
