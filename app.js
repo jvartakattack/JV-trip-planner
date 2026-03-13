@@ -1159,9 +1159,13 @@ function renderRecCards(recEl, cards, isInbound) {
     return `<div class="rec-summary">${c.winner.summary}</div>${availLine}${detailLine}`;
   }
 
-  recEl.innerHTML = `<div class="rec-pills">${pillsHtml}</div><div class="rec-body">${bodyHtml(cards[0])}</div>`;
+  const prevSlide = recEl._recSlide || 0;
+  const activeIdx = prevSlide < cards.length ? prevSlide : 0;
+  recEl.innerHTML = `<div class="rec-pills">${pillsHtml}</div><div class="rec-body">${bodyHtml(cards[activeIdx])}</div>`;
   recEl.classList.remove('hidden');
-  recEl._recSlide = 0;
+  recEl._recSlide = activeIdx;
+  // Update pill active state to match preserved selection
+  recEl.querySelectorAll('.rec-pill').forEach((p, i) => p.classList.toggle('active', i === activeIdx));
 
   // Pill tap — switch displayed card
   recEl.querySelectorAll('.rec-pill').forEach(pill => {
@@ -1174,10 +1178,20 @@ function renderRecCards(recEl, cards, isInbound) {
     });
   });
 
-  // Body tap — open modal
+  // Body tap — switch tab to match recommendation, then open modal
   recEl.querySelector('.rec-body').addEventListener('click', () => {
     const w = cards[recEl._recSlide].winner;
     const j = w.journey || w.entry;
+
+    // Switch to the winner's tab if different from current
+    if (!isInbound && w.mode && w.mode !== activeTab) {
+      activeTab = w.mode;
+      document.querySelectorAll('.tab').forEach(t => {
+        t.classList.toggle('active', t.dataset.tab === activeTab);
+      });
+      renderArrivals();
+    }
+
     if (isInbound) {
       openInboundModal(j);
     } else if (w.mode === 'bus') {
@@ -1206,7 +1220,7 @@ function getOutboundWinner(currentTime) {
       const busLeaveNote = busLeaveIn <= 0 ? 'Leave now' : `Leave in ${busLeaveIn}m`;
       const trainName = TRAIN_LINE_COLORS[bestBus.trainLine].name;
       candidates.push({ min: bestBus.arrivalMin, mode: 'bus', modeCount: 3, journey: bestBus,
-        summary: `${busLeaveNote} — take the ${bestBus.busRoute} to ${bestBus.transferStation}, catch the ${trainName} to ${bestBus.exitStation}. Arrive by ${formatTime(bestBus.arrivalTime)}.`
+        summary: `Take the ${bestBus.busRoute} to ${bestBus.transferStation}, catch the ${trainName} to ${bestBus.exitStation}. Arrive by ${formatTime(bestBus.arrivalTime)}.`
       });
     }
     if (bestBike) {
@@ -1227,7 +1241,7 @@ function getOutboundWinner(currentTime) {
       const busLeaveNote = busLeaveIn <= 0 ? 'Leave now' : `Leave in ${busLeaveIn}m`;
       const trainName = TRAIN_LINE_COLORS[bestBus.trainLine].name;
       candidates.push({ min: bestBus.trainDepartMin, mode: 'bus', modeCount: 3, journey: bestBus,
-        summary: `${busLeaveNote} — take the ${bestBus.busRoute} to ${bestBus.transferStation}, catch the ${trainName} at ${formatTime(bestBus.departTime)}.`
+        summary: `Take the ${bestBus.busRoute} to ${bestBus.transferStation}, catch the ${trainName} at ${formatTime(bestBus.departTime)}.`
       });
     }
     if (bestBike) {
