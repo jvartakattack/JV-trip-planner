@@ -874,7 +874,7 @@ async function searchDestination(query) {
 
 let selectedDestination = null;
 let journeys = [];
-let mapInstance = null;
+
 let activeTab = 'bus';
 let tabFollowsRec = true;
 let recOffsetMinutes = 0; // offset from "now" for the active recommendation pill
@@ -2005,27 +2005,8 @@ function renderArrivals() {
 }
 
 
-// ── Modal & Map ─────────────────────────────────────────────────────────────
+// ── Modals ──────────────────────────────────────────────────────────────────
 
-function makeMapIcon(color) {
-  return L.divIcon({
-    className: '',
-    html: `<div style="width:14px;height:14px;border-radius:50%;background:${color};border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,0.5)"></div>`,
-    iconSize: [14, 14], iconAnchor: [7, 7]
-  });
-}
-
-function renderModalMap(markers) {
-  if (mapInstance) { mapInstance.remove(); mapInstance = null; }
-  const mapEl = document.getElementById('modal-map');
-  if (!mapEl) return;
-  mapInstance = L.map('modal-map', { zoomControl: false });
-  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-    attribution: '&copy; OSM &amp; CARTO', maxZoom: 18
-  }).addTo(mapInstance);
-  markers.forEach(m => m.addTo(mapInstance));
-  mapInstance.fitBounds(L.latLngBounds(markers.map(m => m.getLatLng())), { padding: [30, 30] });
-}
 
 function openDirectWalkModal(entry, direction) {
   const overlay = document.getElementById('modal-overlay');
@@ -2070,14 +2051,9 @@ function openDirectWalkModal(entry, direction) {
         </div>
       </div>
     </div>
-    <div id="modal-map" style="width:100%;height:260px;border-radius:var(--radius);margin-top:4px;z-index:1"></div>
   `;
 
   overlay.classList.remove('hidden');
-  renderModalMap([
-    L.marker([startCoords.lat, startCoords.lng], { icon: makeMapIcon('#9aa0b0') }).bindTooltip(startLabel),
-    L.marker([endCoords.lat, endCoords.lng], { icon: makeMapIcon('#66bb6a') }).bindTooltip(endLabel)
-  ]);
 }
 
 function openOutboundModal(entry, mode) {
@@ -2236,12 +2212,6 @@ function openOutboundModal(entry, mode) {
     }
   }
 
-  // ── Determine map type ──
-  const hasBusDestMap = mode === 'bus' && hasExit;
-  const stationCoords = entry.stationCoords || MUNI_STATIONS[entry.stationName];
-  const hasStationMap = mode !== 'bus' && stationCoords;
-  const showMap = hasBusDestMap || hasStationMap;
-
   content.innerHTML = `
     <div class="journey-header">
       ${headerIcon}
@@ -2251,39 +2221,9 @@ function openOutboundModal(entry, mode) {
       </div>
     </div>
     <div class="timeline">${steps.join('')}</div>
-    ${showMap ? '<div id="modal-map"></div>' : ''}
   `;
 
   overlay.classList.remove('hidden');
-
-  if (showMap) {
-    requestAnimationFrame(() => {
-      if (hasBusDestMap) {
-        const route = BUS_ROUTES[entry.busRoute];
-        const markers = [
-          L.marker([entry.busPickup.lat, entry.busPickup.lng], { icon: makeMapIcon(route.color) })
-            .bindPopup(`<b>${entry.busRoute}</b> pickup<br>${HOME_STOP.name}`),
-          L.marker([entry.transferCoords.lat, entry.transferCoords.lng], { icon: makeMapIcon(trainInfo.color) })
-            .bindPopup(`<b>${entry.trainLine}</b> at ${entry.transferStation}`),
-          L.marker([entry.destCoords.lat, entry.destCoords.lng], { icon: makeMapIcon('#66bb6a') })
-            .bindPopup('Destination')
-        ];
-        if (entry.exitStation !== entry.transferStation) {
-          markers.push(
-            L.marker([entry.exitCoords.lat, entry.exitCoords.lng], { icon: makeMapIcon(trainInfo.color) })
-              .bindPopup(`Exit at ${entry.exitStation}`)
-          );
-        }
-        renderModalMap(markers);
-      } else {
-        const markers = [
-          L.marker([HOME_STOP.lat, HOME_STOP.lng], { icon: makeMapIcon('#64b5f6') }).bindPopup('Home'),
-          L.marker([stationCoords.lat, stationCoords.lng], { icon: makeMapIcon(trainInfo.color) }).bindPopup(entry.stationName)
-        ];
-        renderModalMap(markers);
-      }
-    });
-  }
 }
 
 function getInboundWinner(origin, currentTime) {
@@ -2460,30 +2400,13 @@ function openInboundModal(entry) {
       </div>
     </div>
 
-    <div id="modal-map"></div>
   `;
 
   overlay.classList.remove('hidden');
-
-  requestAnimationFrame(() => {
-    const markers = [
-      L.marker([entry.boardingCoords.lat, entry.boardingCoords.lng], { icon: makeMapIcon(trainInfo.color) }).bindPopup(entry.boardingStation),
-      L.marker([HOME_STOP.lat, HOME_STOP.lng], { icon: makeMapIcon('#64b5f6') }).bindPopup('Home')
-    ];
-    const exitCoords = MUNI_STATIONS[entry.exitStation];
-    if (exitCoords) {
-      markers.push(L.marker([exitCoords.lat, exitCoords.lng], { icon: makeMapIcon('#66bb6a') }).bindPopup('Exit: ' + entry.exitStation));
-    }
-    renderModalMap(markers);
-  });
 }
 
 function closeModal() {
   document.getElementById('modal-overlay').classList.add('hidden');
-  if (mapInstance) {
-    mapInstance.remove();
-    mapInstance = null;
-  }
 }
 
 
