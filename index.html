@@ -80,7 +80,15 @@
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="app.js?v=5"></script>
   <script>
-    if ('serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js');
+    // Unregister old service worker and clear caches
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.getRegistrations().then(function(regs) {
+        regs.forEach(function(r) { r.unregister(); });
+      });
+      caches.keys().then(function(keys) {
+        keys.forEach(function(k) { caches.delete(k); });
+      });
+    }
     // Generate emoji app icon dynamically
     (function() {
       var sizes = [192, 512];
