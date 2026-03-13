@@ -3,6 +3,9 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+  <meta http-equiv="Pragma" content="no-cache" />
+  <meta http-equiv="Expires" content="0" />
   <title>JV Trips</title>
   <!-- PWA -->
   <link rel="manifest" href="manifest.json" />
@@ -12,7 +15,18 @@
   <meta name="apple-mobile-web-app-title" content="JV Trips" />
   <link rel="apple-touch-icon" id="apple-icon" href="icon-192.png" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <link rel="stylesheet" href="styles.css?v=5" />
+  <link rel="stylesheet" href="styles.css?v=6" />
+  <script>
+    // Kill any existing service worker immediately
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.getRegistrations().then(function(regs) {
+        regs.forEach(function(r) { r.unregister(); });
+      });
+      caches.keys().then(function(keys) {
+        keys.forEach(function(k) { caches.delete(k); });
+      });
+    }
+  </script>
 </head>
 <body>
 
@@ -78,17 +92,8 @@
   </div>
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <script src="app.js?v=5"></script>
+  <script src="app.js?v=6"></script>
   <script>
-    // Unregister old service worker and clear caches
-    if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.getRegistrations().then(function(regs) {
-        regs.forEach(function(r) { r.unregister(); });
-      });
-      caches.keys().then(function(keys) {
-        keys.forEach(function(k) { caches.delete(k); });
-      });
-    }
     // Generate emoji app icon dynamically
     (function() {
       var sizes = [192, 512];
