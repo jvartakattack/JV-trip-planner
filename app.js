@@ -1189,15 +1189,15 @@ function renderRecCards(recEl, cards, isInbound) {
   // Store highlight key for the active winner
   const activeWinner = cards[activeIdx].winner;
   recEl._highlightKey = entryKey(activeWinner.journey || activeWinner.entry);
-  // Switch tab to match winner's mode (unless user manually picked a tab)
-  if (tabFollowsRec && activeWinner.mode) {
+  // Switch tab to match winner's mode (unless user manually picked a tab,
+  // or the pill handler already set the tab via _pillSwitchedTab)
+  if (tabFollowsRec && activeWinner.mode && !recEl._pillSwitchedTab) {
     let targetTab;
     if (isInbound) {
-      // Inbound mode is "firstMile-lastMile" e.g. "ebike-walk", "walk-ebike"
       const [firstMile, lastMile] = activeWinner.mode.split('-');
       if (firstMile === 'ebike') targetTab = 'ebike';
-      else if (lastMile === 'ebike') targetTab = 'bus'; // walk+ebike only visible on Bus tab
-      else targetTab = 'walk'; // walk+walk → Walk tab
+      else if (lastMile === 'ebike') targetTab = 'bus';
+      else targetTab = 'walk';
     } else {
       targetTab = activeWinner.mode;
     }
@@ -1206,6 +1206,7 @@ function renderRecCards(recEl, cards, isInbound) {
       t.classList.toggle('active', t.dataset.tab === activeTab);
     });
   }
+  recEl._pillSwitchedTab = false;
   // Update pill active state to match preserved selection
   recEl.querySelectorAll('.rec-pill').forEach((p, i) => p.classList.toggle('active', i === activeIdx));
 
@@ -1230,6 +1231,8 @@ function renderRecCards(recEl, cards, isInbound) {
         document.querySelectorAll('.tab').forEach(t => {
           t.classList.toggle('active', t.dataset.tab === activeTab);
         });
+        // Prevent renderRecCards from overriding this tab choice during re-render
+        recEl._pillSwitchedTab = true;
       }
       renderArrivals();
     });
