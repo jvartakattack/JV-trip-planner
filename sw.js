@@ -1,5 +1,5 @@
-const CACHE_NAME = 'transit-v3';
-const ASSETS = ['./', './index.html', './styles.css', './app.js', './manifest.json'];
+const CACHE_NAME = 'transit-v4';
+const ASSETS = ['./', './index.html', './styles.css?v=4', './app.js?v=4', './manifest.json'];
 
 self.addEventListener('install', (e) => {
   e.waitUntil(caches.open(CACHE_NAME).then(c => c.addAll(ASSETS)));
