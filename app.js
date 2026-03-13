@@ -877,6 +877,7 @@ let journeys = [];
 let mapInstance = null;
 let activeTab = 'bus';
 let tabFollowsRec = true;
+let recOffsetMinutes = 0; // offset from "now" for the active recommendation pill
 let activeDirection = 'outbound';
 
 function updateClock() {
@@ -1197,8 +1198,7 @@ function renderRecCards(recEl, cards, isInbound) {
   function bodyHtml(c) {
     const availLine = c.winner.availHtml ? `<div class="rec-avail">${c.winner.availHtml}</div>` : '';
     const detailLine = c.winner.detail ? `<div class="rec-detail">${c.winner.detail}</div>` : '';
-    const debugLine = `<div style="font-size:10px;color:#666;margin-top:4px">mode: ${c.winner.mode} → tab: ${winnerToTab(c.winner.mode, isInbound)}</div>`;
-    return `<div class="rec-summary">${c.winner.summary}</div>${availLine}${detailLine}${debugLine}`;
+    return `<div class="rec-summary">${c.winner.summary}</div>${availLine}${detailLine}`;
   }
 
   const prevSlide = recEl._recSlide || 0;
@@ -1206,10 +1206,11 @@ function renderRecCards(recEl, cards, isInbound) {
   recEl.innerHTML = `<div class="rec-pills">${pillsHtml}</div><div class="rec-body">${bodyHtml(cards[activeIdx])}</div>`;
   recEl.classList.remove('hidden');
   recEl._recSlide = activeIdx;
-  // Store highlight key and active winner for callers
+  // Store highlight key, active winner, and offset for callers
   const activeWinner = cards[activeIdx].winner;
   recEl._highlightKey = entryKey(activeWinner.journey || activeWinner.entry);
   recEl._activeWinner = activeWinner;
+  recOffsetMinutes = cards[activeIdx].offset || 0;
   // Update pill active state to match preserved selection
   recEl.querySelectorAll('.rec-pill').forEach((p, i) => p.classList.toggle('active', i === activeIdx));
 
@@ -1220,6 +1221,8 @@ function renderRecCards(recEl, cards, isInbound) {
       const idx = parseInt(pill.dataset.idx);
       recEl._recSlide = idx;
       tabFollowsRec = true;
+      // Set the time offset so renderArrivals builds entries for the right departure time
+      recOffsetMinutes = cards[idx]?.offset || 0;
       // Switch tab from the current card's winner and set highlight key
       const winner = cards[idx]?.winner;
       const tab = winnerToTab(winner?.mode, isInbound);
@@ -1337,7 +1340,7 @@ function renderRecommendation(currentTime) {
   for (let i = 0; i < offsets.length; i++) {
     const t = new Date(currentTime.getTime() + offsets[i] * 60000);
     const w = getOutboundWinner(t);
-    if (w) cards.push({ label: labels[i], winner: w });
+    if (w) cards.push({ label: labels[i], offset: offsets[i], winner: w });
   }
 
   if (cards.length === 0) { recEl.classList.add('hidden'); return; }
@@ -1396,9 +1399,13 @@ function renderArrivals() {
     // Render recommendation first — it may switch activeTab to match the winner
     renderInboundRecommendation(origin, currentTime);
 
+    // Build entries for the selected pill's offset time (so entries match the recommendation)
+    const entryTime = recOffsetMinutes > 0
+      ? new Date(currentTime.getTime() + recOffsetMinutes * 60000)
+      : currentTime;
     const modeMap = { bus: 'walk', ebike: 'ebike', walk: 'walk' };
     const firstMileMode = modeMap[activeTab] || 'walk';
-    let inboundEntries = buildInboundEntries(origin, currentTime, firstMileMode);
+    let inboundEntries = buildInboundEntries(origin, entryTime, firstMileMode);
     // Walk tab: no e-bikes at all (filter out last-mile e-bike variants)
     if (activeTab === 'walk') {
       inboundEntries = inboundEntries.filter(e => e.lastMileMode !== 'ebike');
@@ -1459,6 +1466,11 @@ function renderArrivals() {
 
   renderRecommendation(currentTime);
 
+  // Use offset time for entry building so list matches the selected recommendation pill
+  const entryTime = recOffsetMinutes > 0
+    ? new Date(currentTime.getTime() + recOffsetMinutes * 60000)
+    : currentTime;
+
   // Compute delay info from live data
   const delays = liveData.active ? detectGapDelays(currentTime) : {};
   const alertsBanner = liveData.active ? renderAlertsBanner(delays, liveData.alerts) : '';
@@ -1469,9 +1481,9 @@ function renderArrivals() {
       journeys = [];
 
       for (const [key, route] of Object.entries(BUS_ROUTES)) {
-        const arrivals = calculateScheduledArrivals(route, currentTime);
+        const arrivals = calculateScheduledArrivals(route, entryTime);
         for (const arrival of arrivals) {
-          const journey = planJourney(route, arrival, selectedDestination, currentTime);
+          const journey = planJourney(route, arrival, selectedDestination, entryTime);
           if (journey) journeys.push(journey);
         }
       }
@@ -1528,7 +1540,7 @@ function renderArrivals() {
 
     } else if (activeTab === 'ebike') {
       // ── E-Bike + destination ──
-      const nowMin = minutesSinceMidnight(currentTime);
+      const nowMin = minutesSinceMidnight(entryTime);
       const closestStation = findClosestStation(
         selectedDestination.lat, selectedDestination.lng, ['K', 'L', 'M']
       );
@@ -1544,7 +1556,7 @@ function renderArrivals() {
           );
           if (!scheduledStation) continue;
 
-          const train = getNextTrainDeparture(scheduledStation, line, arrivalAtStationMin, currentTime);
+          const train = getNextTrainDeparture(scheduledStation, line, arrivalAtStationMin, entryTime);
           if (!train) continue;
 
           // Find the exit station for this line closest to destination
@@ -1565,7 +1577,7 @@ function renderArrivals() {
           const waitAtStation = trainAtThisStation - arrivalAtStationMin;
           const totalTime = walkMin + station.rideMin + waitAtStation + trainRideTime;
 
-          const arrivalDate = new Date(currentTime);
+          const arrivalDate = new Date(entryTime);
           const arrivalMin = nowMin + totalTime;
           arrivalDate.setHours(Math.floor(arrivalMin / 60), Math.round(arrivalMin % 60), 0, 0);
 
@@ -1635,7 +1647,7 @@ function renderArrivals() {
 
     } else {
       // ── Walk + destination ──
-      const nowMin = minutesSinceMidnight(currentTime);
+      const nowMin = minutesSinceMidnight(entryTime);
       const station = WALK_STATION;
       const arrivalAtStationMin = nowMin + station.walkMin;
       const walkEntries = [];
@@ -1646,7 +1658,7 @@ function renderArrivals() {
         );
         if (!scheduledStation) continue;
 
-        const train = getNextTrainDeparture(scheduledStation, line, arrivalAtStationMin, currentTime);
+        const train = getNextTrainDeparture(scheduledStation, line, arrivalAtStationMin, entryTime);
         if (!train) continue;
 
         const exitStation = findClosestStation(
@@ -1666,7 +1678,7 @@ function renderArrivals() {
         const waitAtStation = trainAtThisStation - arrivalAtStationMin;
         const totalTime = station.walkMin + waitAtStation + trainRideTime;
 
-        const arrivalDate = new Date(currentTime);
+        const arrivalDate = new Date(entryTime);
         const arrivalMin = nowMin + totalTime;
         arrivalDate.setHours(Math.floor(arrivalMin / 60), Math.round(arrivalMin % 60), 0, 0);
 
@@ -1729,7 +1741,7 @@ function renderArrivals() {
 
   // ── Default mode ──
   if (activeTab === 'bus') {
-    const entries = buildDefaultEntries(currentTime);
+    const entries = buildDefaultEntries(entryTime);
 
     if (entries.length === 0) {
       list.innerHTML = '<div class="empty-state">No upcoming service</div>';
@@ -1787,7 +1799,7 @@ function renderArrivals() {
 
   } else if (activeTab === 'ebike') {
     // ── E-Bike tab ──
-    const entries = buildEbikeEntries(currentTime);
+    const entries = buildEbikeEntries(entryTime);
 
     if (entries.length === 0) {
       list.innerHTML = '<div class="empty-state">No upcoming service</div>';
@@ -1829,7 +1841,7 @@ function renderArrivals() {
 
   } else {
     // ── Walk tab ──
-    const entries = buildWalkEntries(currentTime);
+    const entries = buildWalkEntries(entryTime);
 
     if (entries.length === 0) {
       list.innerHTML = '<div class="empty-state">No upcoming service</div>';
@@ -2155,7 +2167,7 @@ function renderInboundRecommendation(origin, currentTime) {
   for (let i = 0; i < offsets.length; i++) {
     const t = new Date(currentTime.getTime() + offsets[i] * 60000);
     const w = getInboundWinner(origin, t);
-    if (w) cards.push({ label: labels[i], winner: w });
+    if (w) cards.push({ label: labels[i], offset: offsets[i], winner: w });
   }
 
   if (cards.length === 0) { recEl.classList.add('hidden'); return; }
@@ -2465,6 +2477,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const recEl = document.getElementById('recommendation');
     if (recEl) recEl._recSlide = 0;
     tabFollowsRec = true;
+    recOffsetMinutes = 0;
 
     const showApp = async () => {
       landing.classList.add('hidden');
@@ -2538,6 +2551,7 @@ document.addEventListener('DOMContentLoaded', () => {
       tab.classList.add('active');
       activeTab = tab.dataset.tab;
       tabFollowsRec = false;
+      recOffsetMinutes = 0;
       renderArrivals();
     });
   });
