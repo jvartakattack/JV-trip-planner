@@ -1151,6 +1151,24 @@ function getBestBusJourney(currentTime, destination) {
   }
 }
 
+function entryKey(e) {
+  const dep = e.trainDepartAbsolute || e.trainDepartureMin || e.trainDepartMin || 0;
+  if (e.busRoute) return `${e.busRoute}|${e.trainLine}|${dep}`;
+  if (e.boardingStation) return `${e.boardingStation}|${e.trainLine}|${dep}`;
+  return `${e.stationName}|${e.trainLine}|${dep}`;
+}
+
+function highlightRecommendedCard() {
+  const recEl = document.getElementById('recommendation');
+  const list = document.getElementById('arrivals-list');
+  if (!recEl || !list) return;
+  list.querySelectorAll('.arrival-card.highlighted').forEach(c => c.classList.remove('highlighted'));
+  const key = recEl._highlightKey;
+  if (!key) return;
+  const match = list.querySelector(`.arrival-card[data-key="${key}"]`);
+  if (match) match.classList.add('highlighted');
+}
+
 function renderRecCards(recEl, cards, isInbound) {
   const pillsHtml = cards.map((c, i) =>
     `<button class="rec-pill${i === 0 ? ' active' : ''}" data-idx="${i}">${c.label}</button>`
@@ -1167,17 +1185,28 @@ function renderRecCards(recEl, cards, isInbound) {
   recEl.innerHTML = `<div class="rec-pills">${pillsHtml}</div><div class="rec-body">${bodyHtml(cards[activeIdx])}</div>`;
   recEl.classList.remove('hidden');
   recEl._recSlide = activeIdx;
+  // Store highlight key for the active winner
+  const activeWinner = cards[activeIdx].winner;
+  recEl._highlightKey = entryKey(activeWinner.journey || activeWinner.entry);
   // Update pill active state to match preserved selection
   recEl.querySelectorAll('.rec-pill').forEach((p, i) => p.classList.toggle('active', i === activeIdx));
 
-  // Pill tap — switch displayed card
+  // Pill tap — switch displayed card, switch tab, and highlight matching arrival
   recEl.querySelectorAll('.rec-pill').forEach(pill => {
     pill.addEventListener('click', e => {
       e.stopPropagation();
       const idx = parseInt(pill.dataset.idx);
       recEl._recSlide = idx;
-      recEl.querySelectorAll('.rec-pill').forEach((p, i) => p.classList.toggle('active', i === idx));
-      recEl.querySelector('.rec-body').innerHTML = bodyHtml(cards[idx]);
+      const w = cards[idx].winner;
+      // Switch tab to match winner's mode
+      if (!isInbound && w.mode && w.mode !== activeTab) {
+        activeTab = w.mode;
+        document.querySelectorAll('.tab').forEach(t => {
+          t.classList.toggle('active', t.dataset.tab === activeTab);
+        });
+      }
+      // Re-render arrivals list (also re-renders rec cards with preserved pill)
+      renderArrivals();
     });
   });
 
@@ -1360,7 +1389,7 @@ function renderArrivals() {
       const lastMileIcon = e.lastMileMode === 'ebike' ? '&#x1f6b2;' : '&#x1F3E0;';
 
       return `
-        <div class="arrival-card" data-index="${i}">
+        <div class="arrival-card" data-index="${i}" data-key="${entryKey(e)}">
           <div class="card-top">
             <div style="display:flex;align-items:center;gap:10px">
               <span style="font-size:16px">${firstMileIcon}</span>
@@ -1390,6 +1419,7 @@ function renderArrivals() {
         openInboundModal(inboundEntries[idx]);
       });
     });
+    highlightRecommendedCard();
     return;
   }
 
@@ -1431,7 +1461,7 @@ function renderArrivals() {
         const leaveLabel = leaveIn <= 0 ? 'leave now' : `leave in ${leaveIn}m`;
 
         return `
-          <div class="arrival-card ${urgencyClass}" data-index="${i}">
+          <div class="arrival-card ${urgencyClass}" data-index="${i}" data-key="${entryKey(j)}">
             <div class="card-top">
               <div style="display:flex;align-items:center;gap:10px">
                 <span class="route-badge ${routeClass}">${j.busRoute}</span>
@@ -1540,7 +1570,7 @@ function renderArrivals() {
         const trainDelayBadge = getDelayBadge(e.trainLine, delays);
         const travelLabel = e.walkMin ? `${e.walkMin}m walk + ${e.rideMin}m ride` : `${e.rideMin}m ride`;
         return `
-          <div class="arrival-card" data-index="${i}">
+          <div class="arrival-card" data-index="${i}" data-key="${entryKey(e)}">
             <div class="card-top">
               <div style="display:flex;align-items:center;gap:10px">
                 <span style="font-size:16px">&#x1f6b2;</span>
@@ -1631,7 +1661,7 @@ function renderArrivals() {
         const trainInfo = TRAIN_LINE_COLORS[e.trainLine];
         const trainDelayBadge = getDelayBadge(e.trainLine, delays);
         return `
-          <div class="arrival-card" data-index="${i}">
+          <div class="arrival-card" data-index="${i}" data-key="${entryKey(e)}">
             <div class="card-top">
               <div style="display:flex;align-items:center;gap:10px">
                 <span style="font-size:16px">&#x1F6B6;</span>
@@ -1659,6 +1689,7 @@ function renderArrivals() {
         });
       });
     }
+    highlightRecommendedCard();
     return;
   }
 
@@ -1691,7 +1722,7 @@ function renderArrivals() {
       const leaveLabel = e.leaveIn <= 0 ? 'leave now' : `leave in ${e.leaveIn}m`;
 
       return `
-        <div class="arrival-card ${urgencyClass}" data-index="${i}">
+        <div class="arrival-card ${urgencyClass}" data-index="${i}" data-key="${entryKey(e)}">
           <div class="card-top">
             <div style="display:flex;align-items:center;gap:10px">
               <span class="route-badge ${routeClass}">${e.busRoute}</span>
@@ -1739,7 +1770,7 @@ function renderArrivals() {
       const travelLabel = e.walkMin ? `${e.walkMin}m walk + ${e.rideMin}m ride` : `${e.rideMin}m ride`;
 
       return `
-        <div class="arrival-card" data-index="${i}">
+        <div class="arrival-card" data-index="${i}" data-key="${entryKey(e)}">
           <div class="card-top">
             <div style="display:flex;align-items:center;gap:10px">
               <span style="font-size:16px">&#x1f6b2;</span>
@@ -1779,7 +1810,7 @@ function renderArrivals() {
       trainDepartTime.setHours(Math.floor(e.trainDepartAbsolute / 60), Math.round(e.trainDepartAbsolute % 60), 0, 0);
 
       return `
-        <div class="arrival-card" data-index="${i}">
+        <div class="arrival-card" data-index="${i}" data-key="${entryKey(e)}">
           <div class="card-top">
             <div style="display:flex;align-items:center;gap:10px">
               <span style="font-size:16px">&#x1F6B6;</span>
@@ -1802,6 +1833,7 @@ function renderArrivals() {
       });
     });
   }
+  highlightRecommendedCard();
 }
 
 

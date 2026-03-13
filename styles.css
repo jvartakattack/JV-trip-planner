@@ -473,6 +473,7 @@ h1 {
 
 .arrival-card.urgent { border-left: 3px solid var(--red); }
 .arrival-card.soon { border-left: 3px solid var(--orange); }
+.arrival-card.highlighted { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
 
 .card-top {
   display: flex;
