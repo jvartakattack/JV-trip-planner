@@ -169,33 +169,35 @@ h1 {
   font-size: 14px;
   line-height: 1.5;
   cursor: pointer;
-  transition: background 0.15s, border-color 0.15s;
-  overflow: hidden;
-  touch-action: pan-y;
-}
-.recommendation:active {
-  background: var(--border);
-  border-color: var(--accent);
 }
 
 .recommendation.hidden { display: none; }
 
 .rec-track {
   display: flex;
-  transition: transform 0.3s ease;
+  overflow-x: auto;
+  scroll-snap-type: x mandatory;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+
+.rec-track::-webkit-scrollbar {
+  display: none;
 }
 
 .rec-slide {
   min-width: 100%;
   padding: 14px 16px;
   box-sizing: border-box;
+  scroll-snap-align: start;
+  flex-shrink: 0;
 }
 
 .rec-dots {
   display: flex;
   justify-content: center;
   gap: 6px;
-  padding: 0 0 10px;
+  padding: 6px 0 10px;
 }
 
 .rec-dot {
