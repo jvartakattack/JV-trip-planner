@@ -1899,8 +1899,8 @@ function openDefaultBusModal(entry) {
     <div class="journey-header">
       <span class="route-badge ${route.cssClass}">${entry.busRoute}</span>
       <div>
-        <div class="journey-total">${formatMinutes(entry.trainDepartureMin - minutesSinceMidnight(now()))} to ${trainInfo.name}</div>
-        <div class="journey-total-label">via ${entry.transferStation} · board at ${formatTime(trainDepartTime)}</div>
+        <div class="journey-total">${formatMinutes(entry.trainDepartureMin - minutesSinceMidnight(now()))} to train</div>
+        <div class="journey-total-label">via ${entry.transferStation} &middot; ${trainInfo.name} at ${formatTime(trainDepartTime)}</div>
       </div>
     </div>
 
@@ -1974,8 +1974,8 @@ function openEbikeModal(entry) {
     <div class="journey-header">
       <span style="font-size:22px">&#x1f6b2;</span>
       <div>
-        <div class="journey-total">${hasExit ? formatMinutes(entry.totalTime) : formatMinutes(departMin - minutesSinceMidnight(now())) + ' to ' + trainInfo.name}</div>
-        <div class="journey-total-label">bike to ${entry.stationName}${hasExit ? ' &middot; arrive by ' + formatTime(entry.arrivalTime) : ' &middot; board at ' + formatTime(trainDepartTime)}</div>
+        <div class="journey-total">${hasExit ? formatMinutes(entry.totalTime) + ' to ' + entry.exitStation : formatMinutes(departMin - minutesSinceMidnight(now())) + ' to train'}</div>
+        <div class="journey-total-label">via ${entry.stationName} &middot; ${hasExit ? 'arrive by ' + formatTime(entry.arrivalTime) : trainInfo.name + ' at ' + formatTime(trainDepartTime)}</div>
       </div>
     </div>
 
@@ -2072,8 +2072,8 @@ function openWalkModal(entry) {
     <div class="journey-header">
       <span style="font-size:22px">&#x1F6B6;</span>
       <div>
-        <div class="journey-total">${hasExit ? formatMinutes(entry.totalTime) : formatMinutes(departMin - minutesSinceMidnight(now())) + ' to ' + trainInfo.name}</div>
-        <div class="journey-total-label">walk to ${entry.stationName}${hasExit ? ' &middot; arrive by ' + formatTime(entry.arrivalTime) : ' &middot; board at ' + formatTime(trainDepartTime)}</div>
+        <div class="journey-total">${hasExit ? formatMinutes(entry.totalTime) + ' to ' + entry.exitStation : formatMinutes(departMin - minutesSinceMidnight(now())) + ' to train'}</div>
+        <div class="journey-total-label">via ${entry.stationName} &middot; ${hasExit ? 'arrive by ' + formatTime(entry.arrivalTime) : trainInfo.name + ' at ' + formatTime(trainDepartTime)}</div>
       </div>
     </div>
 
