@@ -1161,24 +1161,7 @@ function renderRecCards(recEl, cards, isInbound) {
 
   recEl.innerHTML = `<div class="rec-pills">${pillsHtml}</div><div class="rec-body">${bodyHtml(cards[0])}</div>`;
   recEl.classList.remove('hidden');
-  recEl._recCards = cards;
   recEl._recSlide = 0;
-
-  // Set recommended tab without triggering renderArrivals
-  const initTabMode = cards[0].winner.mode.split('-')[0];
-  document.querySelectorAll('.tab').forEach(tb => {
-    tb.classList.remove('active');
-    tb.querySelector('.tab-rec')?.remove();
-  });
-  const initTarget = document.querySelector(`.tab[data-tab="${initTabMode}"]`);
-  if (initTarget) {
-    initTarget.classList.add('active');
-    const badge = document.createElement('span');
-    badge.className = 'tab-rec';
-    badge.textContent = 'Recommended';
-    initTarget.appendChild(badge);
-  }
-  activeTab = initTabMode;
 
   // Pill tap — switch displayed card
   recEl.querySelectorAll('.rec-pill').forEach(pill => {
@@ -1188,21 +1171,6 @@ function renderRecCards(recEl, cards, isInbound) {
       recEl._recSlide = idx;
       recEl.querySelectorAll('.rec-pill').forEach((p, i) => p.classList.toggle('active', i === idx));
       recEl.querySelector('.rec-body').innerHTML = bodyHtml(cards[idx]);
-      // Update tab
-      const tabMode = cards[idx].winner.mode.split('-')[0];
-      document.querySelectorAll('.tab').forEach(tb => {
-        tb.classList.remove('active');
-        tb.querySelector('.tab-rec')?.remove();
-      });
-      const target = document.querySelector(`.tab[data-tab="${tabMode}"]`);
-      if (target) {
-        target.classList.add('active');
-        const badge = document.createElement('span');
-        badge.className = 'tab-rec';
-        badge.textContent = 'Recommended';
-        target.appendChild(badge);
-      }
-      activeTab = tabMode;
     });
   });
 
@@ -2661,24 +2629,6 @@ document.addEventListener('DOMContentLoaded', () => {
   }, { passive: true });
 
   // Tabs
-  window.switchToTab = switchToTab;
-  function switchToTab(mode) {
-    document.querySelectorAll('.tab').forEach(t => {
-      t.classList.remove('active');
-      t.querySelector('.tab-rec')?.remove();
-    });
-    const target = document.querySelector(`.tab[data-tab="${mode}"]`);
-    if (target) {
-      target.classList.add('active');
-      const badge = document.createElement('span');
-      badge.className = 'tab-rec';
-      badge.textContent = 'Recommended';
-      target.appendChild(badge);
-    }
-    activeTab = mode;
-    renderArrivals();
-  }
-
   document.querySelectorAll('.tab').forEach(tab => {
     tab.addEventListener('click', () => {
       document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));

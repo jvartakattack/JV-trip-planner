@@ -256,7 +256,6 @@ h1 {
   font-weight: 600;
   cursor: pointer;
   transition: background 0.2s, color 0.2s;
-  position: relative;
 }
 
 .tab:hover { color: var(--text); }
@@ -265,15 +264,6 @@ h1 {
   background: var(--surface-hover);
   color: var(--text);
   box-shadow: 0 1px 3px rgba(0,0,0,0.3);
-}
-
-.tab-rec {
-  display: block;
-  font-size: 9px;
-  font-weight: 500;
-  color: var(--accent);
-  letter-spacing: 0.3px;
-  margin-top: 1px;
 }
 
 /* ── Landing Screen ──────────────────────────────────── */
