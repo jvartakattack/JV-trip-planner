@@ -46,6 +46,7 @@
       <button data-theme="default" class="active">Original</button>
       <button data-theme="sleek">Sleek</button>
       <button data-theme="genz">Gen-Z</button>
+      <button data-theme="safari">Safari</button>
     </div>
   </div>
 
@@ -114,12 +115,14 @@
       var themes = {
         default: 'styles.css?v=25',
         sleek: 'styles-sleek.css?v=1',
-        genz: 'styles-genz.css?v=1'
+        genz: 'styles-genz.css?v=1',
+        safari: 'styles-safari.css?v=1'
       };
       var themeMeta = {
         default: '#0f1117',
         sleek: '#f5f5f7',
-        genz: '#1a1025'
+        genz: '#1a1025',
+        safari: '#f7f2ea'
       };
       var saved = localStorage.getItem('jvtrips-theme') || 'default';
       var link = document.getElementById('theme-stylesheet');
