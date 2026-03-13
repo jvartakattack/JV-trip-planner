@@ -1197,13 +1197,8 @@ function renderRecCards(recEl, cards, isInbound) {
 
     if (isInbound) {
       openInboundModal(j);
-    } else if (w.mode === 'bus') {
-      selectedDestination ? openBusDestModal(j) : openDefaultBusModal(j);
-    } else if (w.mode === 'ebike') {
-      const stationData = MUNI_STATIONS[j.stationName];
-      openEbikeModal({ ...j, stationCoords: stationData ? { lat: stationData.lat, lng: stationData.lng } : null });
     } else {
-      openWalkModal(j);
+      openOutboundModal(j, w.mode);
     }
   });
 }
@@ -1219,8 +1214,6 @@ function getOutboundWinner(currentTime) {
 
   if (selectedDestination) {
     if (bestBus) {
-      const busLeaveIn = Math.max(0, bestBus.busEta - (bestBus.walkToStop || 0));
-      const busLeaveNote = busLeaveIn <= 0 ? 'Leave now' : `Leave in ${busLeaveIn}m`;
       const trainName = TRAIN_LINE_COLORS[bestBus.trainLine].name;
       candidates.push({ min: bestBus.arrivalMin, mode: 'bus', modeCount: 3, journey: bestBus,
         summary: `Take the ${bestBus.busRoute} to ${bestBus.transferStation}, catch the ${trainName} to ${bestBus.exitStation}. Arrive by ${formatTime(bestBus.arrivalTime)}.`
@@ -1240,8 +1233,6 @@ function getOutboundWinner(currentTime) {
     }
   } else {
     if (bestBus) {
-      const busLeaveIn = Math.max(0, bestBus.busEta - (bestBus.walkToStop || 0));
-      const busLeaveNote = busLeaveIn <= 0 ? 'Leave now' : `Leave in ${busLeaveIn}m`;
       const trainName = TRAIN_LINE_COLORS[bestBus.trainLine].name;
       candidates.push({ min: bestBus.trainDepartMin, mode: 'bus', modeCount: 3, journey: bestBus,
         summary: `Take the ${bestBus.busRoute} to ${bestBus.transferStation}, catch the ${trainName} at ${formatTime(bestBus.departTime)}.`
@@ -1467,7 +1458,7 @@ function renderArrivals() {
       list.querySelectorAll('.arrival-card').forEach(card => {
         card.addEventListener('click', () => {
           const idx = parseInt(card.dataset.index);
-          openBusDestModal(journeys[idx]);
+          openOutboundModal(journeys[idx], 'bus');
         });
       });
 
@@ -1516,6 +1507,7 @@ function renderArrivals() {
 
           entries.push({
             stationName: station.name,
+            stationCoords: { lat: station.lat, lng: station.lng },
             walkMin,
             rideMin: station.rideMin,
             trainLine: line,
@@ -1573,8 +1565,7 @@ function renderArrivals() {
         card.addEventListener('click', () => {
           const idx = parseInt(card.dataset.index);
           const e = deduped[idx];
-          const stationData = MUNI_STATIONS[e.stationName];
-          openEbikeModal({ ...e, stationCoords: stationData ? { lat: stationData.lat, lng: stationData.lng } : null });
+          openOutboundModal(e, 'ebike');
         });
       });
 
@@ -1617,6 +1608,7 @@ function renderArrivals() {
 
         walkEntries.push({
           stationName: station.name,
+          stationCoords: { lat: station.lat, lng: station.lng },
           walkMin: station.walkMin,
           trainLine: line,
           trainWait: Math.round(waitAtStation),
@@ -1663,7 +1655,7 @@ function renderArrivals() {
       list.querySelectorAll('.arrival-card').forEach(card => {
         card.addEventListener('click', () => {
           const idx = parseInt(card.dataset.index);
-          openWalkModal(walkEntries[idx]);
+          openOutboundModal(walkEntries[idx], 'walk');
         });
       });
     }
@@ -1724,7 +1716,7 @@ function renderArrivals() {
     list.querySelectorAll('.arrival-card').forEach(card => {
       card.addEventListener('click', () => {
         const idx = parseInt(card.dataset.index);
-        openDefaultBusModal(entries[idx]);
+        openOutboundModal(entries[idx], 'bus');
       });
     });
 
@@ -1766,7 +1758,7 @@ function renderArrivals() {
     list.querySelectorAll('.arrival-card').forEach(card => {
       card.addEventListener('click', () => {
         const idx = parseInt(card.dataset.index);
-        openEbikeModal(entries[idx]);
+        openOutboundModal(entries[idx], 'ebike');
       });
     });
 
@@ -1806,7 +1798,7 @@ function renderArrivals() {
     list.querySelectorAll('.arrival-card').forEach(card => {
       card.addEventListener('click', () => {
         const idx = parseInt(card.dataset.index);
-        openWalkModal(entries[idx]);
+        openOutboundModal(entries[idx], 'walk');
       });
     });
   }
@@ -1815,348 +1807,230 @@ function renderArrivals() {
 
 // ── Modal & Map ─────────────────────────────────────────────────────────────
 
-function openBusDestModal(journey) {
-  const overlay = document.getElementById('modal-overlay');
-  const content = document.getElementById('modal-content');
-  const route = BUS_ROUTES[journey.busRoute];
-  const trainInfo = TRAIN_LINE_COLORS[journey.trainLine];
-
-  const walkToStop = journey.walkToStop || 0;
-  const leaveIn = Math.max(0, journey.busEta - walkToStop);
-
-  content.innerHTML = `
-    <div class="journey-header">
-      <span class="route-badge ${route.cssClass}">${journey.busRoute}</span>
-      <div>
-        <div class="journey-total">${formatMinutes(journey.totalTime)}</div>
-        <div class="journey-total-label">to ${journey.exitStation} &middot; by ${formatTime(journey.arrivalTime)}</div>
-      </div>
-    </div>
-
-    <div class="timeline">
-      ${walkToStop > 0 ? `
-      <div class="timeline-step">
-        <div class="timeline-line">
-          <div class="timeline-dot walk"></div>
-          <div class="timeline-connector"></div>
-        </div>
-        <div class="timeline-content">
-          <div class="timeline-title">Walk to bus stop</div>
-          <div class="timeline-duration">${walkToStop} min walk</div>
-          <div class="timeline-detail">${leaveIn <= 0 ? 'Leave now' : `Leave in ${leaveIn} min`}</div>
-        </div>
-      </div>
-      ` : ''}
-
-      <div class="timeline-step">
-        <div class="timeline-line">
-          <div class="timeline-dot ${route.dotClass}"></div>
-          <div class="timeline-connector"></div>
-        </div>
-        <div class="timeline-content">
-          <div class="timeline-title">Catch ${journey.busRoute} at stop</div>
-          <div class="timeline-detail">Departs ${formatTime(journey.busDeparture)}</div>
-          <div class="timeline-duration">${journey.busEta <= 0 ? 'Departing now' : `Bus in ${journey.busEta} min`}</div>
-        </div>
-      </div>
-
-      <div class="timeline-step">
-        <div class="timeline-line">
-          <div class="timeline-dot walk"></div>
-          <div class="timeline-connector"></div>
-        </div>
-        <div class="timeline-content">
-          <div class="timeline-title">Ride to ${journey.transferStation}</div>
-          <div class="timeline-duration">${journey.busToTransferTime} min on bus</div>
-        </div>
-      </div>
-
-      <div class="timeline-step">
-        <div class="timeline-line">
-          <div class="timeline-dot train-${journey.trainLine.toLowerCase()}"></div>
-          <div class="timeline-connector"></div>
-        </div>
-        <div class="timeline-content">
-          <div class="timeline-title">Transfer to <span class="train-badge ${trainInfo.cssClass}">${journey.trainLine}</span> ${trainInfo.name}</div>
-          <div class="timeline-detail">Wait ~${journey.trainWait} min</div>
-          <div class="timeline-duration">${journey.trainRideTime} min to ${journey.exitStation}</div>
-        </div>
-      </div>
-
-      <div class="timeline-step">
-        <div class="timeline-line">
-          <div class="timeline-dot destination"></div>
-        </div>
-        <div class="timeline-content">
-          <div class="timeline-title">Walk to destination</div>
-          <div class="timeline-duration">${journey.walkTime} min walk</div>
-        </div>
-      </div>
-    </div>
-
-    <div id="modal-map"></div>
-  `;
-
-  overlay.classList.remove('hidden');
-  requestAnimationFrame(() => renderMap(journey));
+function makeMapIcon(color) {
+  return L.divIcon({
+    className: '',
+    html: `<div style="width:14px;height:14px;border-radius:50%;background:${color};border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,0.5)"></div>`,
+    iconSize: [14, 14], iconAnchor: [7, 7]
+  });
 }
 
-function openDefaultBusModal(entry) {
+function renderModalMap(markers) {
+  if (mapInstance) { mapInstance.remove(); mapInstance = null; }
+  const mapEl = document.getElementById('modal-map');
+  if (!mapEl) return;
+  mapInstance = L.map('modal-map', { zoomControl: false });
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+    attribution: '&copy; OSM &amp; CARTO', maxZoom: 18
+  }).addTo(mapInstance);
+  markers.forEach(m => m.addTo(mapInstance));
+  mapInstance.fitBounds(L.latLngBounds(markers.map(m => m.getLatLng())), { padding: [30, 30] });
+}
+
+function openOutboundModal(entry, mode) {
   const overlay = document.getElementById('modal-overlay');
   const content = document.getElementById('modal-content');
-  const route = BUS_ROUTES[entry.busRoute];
   const trainInfo = TRAIN_LINE_COLORS[entry.trainLine];
+  const departMin = entry.trainDepartAbsolute || entry.trainDepartureMin || 0;
   const trainDepartTime = new Date();
-  trainDepartTime.setHours(Math.floor(entry.trainDepartureMin / 60), entry.trainDepartureMin % 60, 0, 0);
+  trainDepartTime.setHours(Math.floor(departMin / 60), Math.round(departMin % 60), 0, 0);
+  const hasExit = entry.exitStation && entry.exitStation !== (entry.stationName || '');
 
-  const walkToStop = entry.walkToStop || 0;
-  const leaveIn = Math.max(0, entry.busEta - walkToStop);
+  // ── Header (single source of truth for all outbound modes) ──
+  let headerIcon, headerTotal, headerSub;
+  if (mode === 'bus') {
+    const route = BUS_ROUTES[entry.busRoute];
+    headerIcon = `<span class="route-badge ${route.cssClass}">${entry.busRoute}</span>`;
+  } else {
+    headerIcon = mode === 'ebike'
+      ? '<span style="font-size:22px">&#x1f6b2;</span>'
+      : '<span style="font-size:22px">&#x1F6B6;</span>';
+  }
+  if (hasExit) {
+    headerTotal = mode === 'bus'
+      ? formatMinutes(entry.totalTime)
+      : `${formatMinutes(entry.totalTime)} to ${entry.exitStation}`;
+    headerSub = mode === 'bus'
+      ? `to ${entry.exitStation} &middot; by ${formatTime(entry.arrivalTime)}`
+      : `via ${entry.stationName} &middot; arrive by ${formatTime(entry.arrivalTime)}`;
+  } else {
+    headerTotal = `${formatMinutes(entry.timeToTrain)} to train`;
+    headerSub = mode === 'bus'
+      ? `via ${entry.transferStation} &middot; ${trainInfo.name} at ${formatTime(trainDepartTime)}`
+      : `via ${entry.stationName} &middot; ${trainInfo.name} at ${formatTime(trainDepartTime)}`;
+  }
 
-  content.innerHTML = `
-    <div class="journey-header">
-      <span class="route-badge ${route.cssClass}">${entry.busRoute}</span>
-      <div>
-        <div class="journey-total">${formatMinutes(entry.timeToTrain)} to train</div>
-        <div class="journey-total-label">via ${entry.transferStation} &middot; ${trainInfo.name} at ${formatTime(trainDepartTime)}</div>
-      </div>
-    </div>
+  // ── Timeline steps ──
+  const steps = [];
 
-    <div class="timeline">
-      ${walkToStop > 0 ? `
+  if (mode === 'bus') {
+    const route = BUS_ROUTES[entry.busRoute];
+    const walkToStop = entry.walkToStop || 0;
+    const leaveIn = Math.max(0, entry.busEta - walkToStop);
+
+    if (walkToStop > 0) {
+      steps.push(`
+        <div class="timeline-step">
+          <div class="timeline-line"><div class="timeline-dot walk"></div><div class="timeline-connector"></div></div>
+          <div class="timeline-content">
+            <div class="timeline-title">Walk to bus stop</div>
+            <div class="timeline-duration">${walkToStop} min walk</div>
+            <div class="timeline-detail">${leaveIn <= 0 ? 'Leave now' : `Leave in ${leaveIn} min`}</div>
+          </div>
+        </div>`);
+    }
+    steps.push(`
       <div class="timeline-step">
-        <div class="timeline-line">
-          <div class="timeline-dot walk"></div>
-          <div class="timeline-connector"></div>
-        </div>
-        <div class="timeline-content">
-          <div class="timeline-title">Walk to bus stop</div>
-          <div class="timeline-duration">${walkToStop} min walk</div>
-          <div class="timeline-detail">${leaveIn <= 0 ? 'Leave now' : `Leave in ${leaveIn} min`}</div>
-        </div>
-      </div>
-      ` : ''}
-
-      <div class="timeline-step">
-        <div class="timeline-line">
-          <div class="timeline-dot ${route.dotClass}"></div>
-          <div class="timeline-connector"></div>
-        </div>
+        <div class="timeline-line"><div class="timeline-dot ${route.dotClass}"></div><div class="timeline-connector"></div></div>
         <div class="timeline-content">
           <div class="timeline-title">Catch ${entry.busRoute} at stop</div>
           <div class="timeline-detail">Departs ${formatTime(entry.busDeparture)}</div>
           <div class="timeline-duration">${entry.busEta <= 0 ? 'Departing now' : `Bus in ${entry.busEta} min`}</div>
         </div>
-      </div>
-
+      </div>`);
+    steps.push(`
       <div class="timeline-step">
-        <div class="timeline-line">
-          <div class="timeline-dot walk"></div>
-          <div class="timeline-connector"></div>
-        </div>
+        <div class="timeline-line"><div class="timeline-dot walk"></div><div class="timeline-connector"></div></div>
         <div class="timeline-content">
           <div class="timeline-title">Ride to ${entry.transferStation}</div>
           <div class="timeline-duration">${entry.busToTransferTime} min on bus</div>
         </div>
-      </div>
+      </div>`);
 
-      <div class="timeline-step">
-        <div class="timeline-line">
-          <div class="timeline-dot train-${entry.trainLine.toLowerCase()}"></div>
-        </div>
-        <div class="timeline-content">
-          <div class="timeline-title">Board <span class="train-badge ${trainInfo.cssClass}">${entry.trainLine}</span> ${trainInfo.name}</div>
-          <div class="timeline-detail">Wait ~${entry.trainWait} min</div>
-          <div class="timeline-duration">Departs ${formatTime(trainDepartTime)}</div>
-        </div>
-      </div>
-    </div>
-  `;
-
-  overlay.classList.remove('hidden');
-}
-
-function openEbikeModal(entry) {
-  const overlay = document.getElementById('modal-overlay');
-  const content = document.getElementById('modal-content');
-  const trainInfo = TRAIN_LINE_COLORS[entry.trainLine];
-  const trainDepartTime = new Date();
-  const departMin = entry.trainDepartAbsolute || entry.trainDepartureMin || 0;
-  trainDepartTime.setHours(Math.floor(departMin / 60), Math.round(departMin % 60), 0, 0);
-
-  const hasExit = entry.exitStation && entry.exitStation !== entry.stationName;
-
-  const walkMin = entry.walkMin || 0;
-
-  content.innerHTML = `
-    <div class="journey-header">
-      <span style="font-size:22px">&#x1f6b2;</span>
-      <div>
-        <div class="journey-total">${hasExit ? formatMinutes(entry.totalTime) + ' to ' + entry.exitStation : formatMinutes(entry.timeToTrain) + ' to train'}</div>
-        <div class="journey-total-label">via ${entry.stationName} &middot; ${hasExit ? 'arrive by ' + formatTime(entry.arrivalTime) : trainInfo.name + ' at ' + formatTime(trainDepartTime)}</div>
-      </div>
-    </div>
-
-    <div class="timeline">
-      ${walkMin > 0 ? `
-      <div class="timeline-step">
-        <div class="timeline-line">
-          <div class="timeline-dot walk"></div>
-          <div class="timeline-connector"></div>
-        </div>
-        <div class="timeline-content">
-          <div class="timeline-title">Walk to e-bike dock near home</div>
-          <div class="timeline-duration">${walkMin} min walk</div>
-        </div>
-      </div>
-      ` : ''}
-
-      <div class="timeline-step">
-        <div class="timeline-line">
-          <div class="timeline-dot walk"></div>
-          <div class="timeline-connector"></div>
-        </div>
-        <div class="timeline-content">
-          <div class="timeline-title">Bike to ${entry.stationName}</div>
-          <div class="timeline-duration">${entry.rideMin} min ride</div>
-        </div>
-      </div>
-
-      <div class="timeline-step">
-        <div class="timeline-line">
-          <div class="timeline-dot train-${entry.trainLine.toLowerCase()}"></div>
-          ${hasExit ? '<div class="timeline-connector"></div>' : ''}
-        </div>
-        <div class="timeline-content">
-          <div class="timeline-title">Board <span class="train-badge ${trainInfo.cssClass}">${entry.trainLine}</span> ${trainInfo.name}</div>
-          <div class="timeline-detail">Wait ~${entry.trainWait} min</div>
-          <div class="timeline-duration">Departs ${formatTime(trainDepartTime)}</div>
-        </div>
-      </div>
-
-      ${hasExit ? `
-      <div class="timeline-step">
-        <div class="timeline-line">
-          <div class="timeline-dot destination"></div>
-        </div>
-        <div class="timeline-content">
-          <div class="timeline-title">Exit at ${entry.exitStation}</div>
-          ${entry.trainRideTime ? `<div class="timeline-duration">${entry.trainRideTime} min on train</div>` : ''}
-        </div>
-      </div>
-      ` : ''}
-    </div>
-
-    ${entry.stationCoords ? '<div id="modal-map"></div>' : ''}
-  `;
-
-  overlay.classList.remove('hidden');
-
-  if (entry.stationCoords) {
-    requestAnimationFrame(() => {
-      if (mapInstance) { mapInstance.remove(); mapInstance = null; }
-      const mapEl = document.getElementById('modal-map');
-      if (!mapEl) return;
-      mapInstance = L.map('modal-map', { zoomControl: false });
-      L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-        attribution: '&copy; OSM &amp; CARTO', maxZoom: 18
-      }).addTo(mapInstance);
-
-      function makeIcon(color) {
-        return L.divIcon({ className: '', html: `<div style="width:14px;height:14px;border-radius:50%;background:${color};border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,0.5)"></div>`, iconSize: [14, 14], iconAnchor: [7, 7] });
-      }
-
-      const markers = [
-        L.marker([HOME_STOP.lat, HOME_STOP.lng], { icon: makeIcon('#64b5f6') }).bindPopup('Home'),
-        L.marker([entry.stationCoords.lat, entry.stationCoords.lng], { icon: makeIcon(trainInfo.color) }).bindPopup(entry.stationName)
-      ];
-      markers.forEach(m => m.addTo(mapInstance));
-      mapInstance.fitBounds(L.latLngBounds(markers.map(m => m.getLatLng())), { padding: [30, 30] });
-    });
-  }
-}
-
-function openWalkModal(entry) {
-  const overlay = document.getElementById('modal-overlay');
-  const content = document.getElementById('modal-content');
-  const trainInfo = TRAIN_LINE_COLORS[entry.trainLine];
-  const departMin = entry.trainDepartAbsolute || 0;
-  const trainDepartTime = new Date();
-  trainDepartTime.setHours(Math.floor(departMin / 60), Math.round(departMin % 60), 0, 0);
-
-  const hasExit = entry.exitStation && entry.exitStation !== entry.stationName;
-
-  content.innerHTML = `
-    <div class="journey-header">
-      <span style="font-size:22px">&#x1F6B6;</span>
-      <div>
-        <div class="journey-total">${hasExit ? formatMinutes(entry.totalTime) + ' to ' + entry.exitStation : formatMinutes(entry.timeToTrain) + ' to train'}</div>
-        <div class="journey-total-label">via ${entry.stationName} &middot; ${hasExit ? 'arrive by ' + formatTime(entry.arrivalTime) : trainInfo.name + ' at ' + formatTime(trainDepartTime)}</div>
-      </div>
-    </div>
-
-    <div class="timeline">
-      <div class="timeline-step">
-        <div class="timeline-line">
-          <div class="timeline-dot walk"></div>
-          <div class="timeline-connector"></div>
-        </div>
-        <div class="timeline-content">
-          <div class="timeline-title">Walk to ${entry.stationName}</div>
-          <div class="timeline-duration">${entry.walkMin} min walk</div>
-        </div>
-      </div>
-
-      <div class="timeline-step">
-        <div class="timeline-line">
-          <div class="timeline-dot train-${entry.trainLine.toLowerCase()}"></div>
-          ${hasExit ? '<div class="timeline-connector"></div>' : ''}
-        </div>
-        <div class="timeline-content">
-          <div class="timeline-title">Board <span class="train-badge ${trainInfo.cssClass}">${entry.trainLine}</span> ${trainInfo.name}</div>
-          <div class="timeline-detail">Wait ~${entry.trainWait} min</div>
-          <div class="timeline-duration">Departs ${formatTime(trainDepartTime)}</div>
-        </div>
-      </div>
-
-      ${hasExit ? `
-      <div class="timeline-step">
-        <div class="timeline-line">
-          <div class="timeline-dot destination"></div>
-        </div>
-        <div class="timeline-content">
-          <div class="timeline-title">Exit at ${entry.exitStation}</div>
-          ${entry.trainRideTime ? `<div class="timeline-duration">${entry.trainRideTime} min on train</div>` : ''}
-        </div>
-      </div>
-      ` : ''}
-    </div>
-
-    <div id="modal-map"></div>
-  `;
-
-  overlay.classList.remove('hidden');
-
-  requestAnimationFrame(() => {
-    if (mapInstance) { mapInstance.remove(); mapInstance = null; }
-    const mapEl = document.getElementById('modal-map');
-    if (!mapEl) return;
-    mapInstance = L.map('modal-map', { zoomControl: false });
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-      attribution: '&copy; OSM &amp; CARTO', maxZoom: 18
-    }).addTo(mapInstance);
-
-    function makeIcon(color) {
-      return L.divIcon({ className: '', html: `<div style="width:14px;height:14px;border-radius:50%;background:${color};border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,0.5)"></div>`, iconSize: [14, 14], iconAnchor: [7, 7] });
+    if (hasExit) {
+      steps.push(`
+        <div class="timeline-step">
+          <div class="timeline-line"><div class="timeline-dot train-${entry.trainLine.toLowerCase()}"></div><div class="timeline-connector"></div></div>
+          <div class="timeline-content">
+            <div class="timeline-title">Transfer to <span class="train-badge ${trainInfo.cssClass}">${entry.trainLine}</span> ${trainInfo.name}</div>
+            <div class="timeline-detail">Wait ~${entry.trainWait} min</div>
+            <div class="timeline-duration">${entry.trainRideTime} min to ${entry.exitStation}</div>
+          </div>
+        </div>`);
+      steps.push(`
+        <div class="timeline-step">
+          <div class="timeline-line"><div class="timeline-dot destination"></div></div>
+          <div class="timeline-content">
+            <div class="timeline-title">Walk to destination</div>
+            <div class="timeline-duration">${entry.walkTime} min walk</div>
+          </div>
+        </div>`);
+    } else {
+      steps.push(`
+        <div class="timeline-step">
+          <div class="timeline-line"><div class="timeline-dot train-${entry.trainLine.toLowerCase()}"></div></div>
+          <div class="timeline-content">
+            <div class="timeline-title">Board <span class="train-badge ${trainInfo.cssClass}">${entry.trainLine}</span> ${trainInfo.name}</div>
+            <div class="timeline-detail">Wait ~${entry.trainWait} min</div>
+            <div class="timeline-duration">Departs ${formatTime(trainDepartTime)}</div>
+          </div>
+        </div>`);
     }
 
-    const stationCoords = MUNI_STATIONS[entry.stationName] || WALK_STATION;
-    const markers = [
-      L.marker([HOME_STOP.lat, HOME_STOP.lng], { icon: makeIcon('#64b5f6') }).bindPopup('Home'),
-      L.marker([stationCoords.lat, stationCoords.lng], { icon: makeIcon(trainInfo.color) }).bindPopup(entry.stationName)
-    ];
-    markers.forEach(m => m.addTo(mapInstance));
-    mapInstance.fitBounds(L.latLngBounds(markers.map(m => m.getLatLng())), { padding: [30, 30] });
-  });
+  } else {
+    // Ebike or walk first mile
+    const walkMin = entry.walkMin || 0;
+    if (mode === 'ebike') {
+      if (walkMin > 0) {
+        steps.push(`
+          <div class="timeline-step">
+            <div class="timeline-line"><div class="timeline-dot walk"></div><div class="timeline-connector"></div></div>
+            <div class="timeline-content">
+              <div class="timeline-title">Walk to e-bike dock near home</div>
+              <div class="timeline-duration">${walkMin} min walk</div>
+            </div>
+          </div>`);
+      }
+      steps.push(`
+        <div class="timeline-step">
+          <div class="timeline-line"><div class="timeline-dot walk"></div><div class="timeline-connector"></div></div>
+          <div class="timeline-content">
+            <div class="timeline-title">Bike to ${entry.stationName}</div>
+            <div class="timeline-duration">${entry.rideMin} min ride</div>
+          </div>
+        </div>`);
+    } else {
+      steps.push(`
+        <div class="timeline-step">
+          <div class="timeline-line"><div class="timeline-dot walk"></div><div class="timeline-connector"></div></div>
+          <div class="timeline-content">
+            <div class="timeline-title">Walk to ${entry.stationName}</div>
+            <div class="timeline-duration">${walkMin} min walk</div>
+          </div>
+        </div>`);
+    }
+
+    // Train step
+    steps.push(`
+      <div class="timeline-step">
+        <div class="timeline-line"><div class="timeline-dot train-${entry.trainLine.toLowerCase()}"></div>${hasExit ? '<div class="timeline-connector"></div>' : ''}</div>
+        <div class="timeline-content">
+          <div class="timeline-title">Board <span class="train-badge ${trainInfo.cssClass}">${entry.trainLine}</span> ${trainInfo.name}</div>
+          <div class="timeline-detail">Wait ~${entry.trainWait} min</div>
+          <div class="timeline-duration">Departs ${formatTime(trainDepartTime)}</div>
+        </div>
+      </div>`);
+
+    if (hasExit) {
+      steps.push(`
+        <div class="timeline-step">
+          <div class="timeline-line"><div class="timeline-dot destination"></div></div>
+          <div class="timeline-content">
+            <div class="timeline-title">Exit at ${entry.exitStation}</div>
+            ${entry.trainRideTime ? `<div class="timeline-duration">${entry.trainRideTime} min on train</div>` : ''}
+          </div>
+        </div>`);
+    }
+  }
+
+  // ── Determine map type ──
+  const hasBusDestMap = mode === 'bus' && hasExit;
+  const stationCoords = entry.stationCoords || MUNI_STATIONS[entry.stationName];
+  const hasStationMap = mode !== 'bus' && stationCoords;
+  const showMap = hasBusDestMap || hasStationMap;
+
+  content.innerHTML = `
+    <div class="journey-header">
+      ${headerIcon}
+      <div>
+        <div class="journey-total">${headerTotal}</div>
+        <div class="journey-total-label">${headerSub}</div>
+      </div>
+    </div>
+    <div class="timeline">${steps.join('')}</div>
+    ${showMap ? '<div id="modal-map"></div>' : ''}
+  `;
+
+  overlay.classList.remove('hidden');
+
+  if (showMap) {
+    requestAnimationFrame(() => {
+      if (hasBusDestMap) {
+        const route = BUS_ROUTES[entry.busRoute];
+        const markers = [
+          L.marker([entry.busPickup.lat, entry.busPickup.lng], { icon: makeMapIcon(route.color) })
+            .bindPopup(`<b>${entry.busRoute}</b> pickup<br>${HOME_STOP.name}`),
+          L.marker([entry.transferCoords.lat, entry.transferCoords.lng], { icon: makeMapIcon(trainInfo.color) })
+            .bindPopup(`<b>${entry.trainLine}</b> at ${entry.transferStation}`),
+          L.marker([entry.destCoords.lat, entry.destCoords.lng], { icon: makeMapIcon('#66bb6a') })
+            .bindPopup('Destination')
+        ];
+        if (entry.exitStation !== entry.transferStation) {
+          markers.push(
+            L.marker([entry.exitCoords.lat, entry.exitCoords.lng], { icon: makeMapIcon(trainInfo.color) })
+              .bindPopup(`Exit at ${entry.exitStation}`)
+          );
+        }
+        renderModalMap(markers);
+      } else {
+        const markers = [
+          L.marker([HOME_STOP.lat, HOME_STOP.lng], { icon: makeMapIcon('#64b5f6') }).bindPopup('Home'),
+          L.marker([stationCoords.lat, stationCoords.lng], { icon: makeMapIcon(trainInfo.color) }).bindPopup(entry.stationName)
+        ];
+        renderModalMap(markers);
+      }
+    });
+  }
 }
 
 function getInboundWinner(origin, currentTime) {
@@ -2319,28 +2193,15 @@ function openInboundModal(entry) {
   overlay.classList.remove('hidden');
 
   requestAnimationFrame(() => {
-    if (mapInstance) { mapInstance.remove(); mapInstance = null; }
-    const mapEl = document.getElementById('modal-map');
-    if (!mapEl) return;
-    mapInstance = L.map('modal-map', { zoomControl: false });
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-      attribution: '&copy; OSM &amp; CARTO', maxZoom: 18
-    }).addTo(mapInstance);
-
-    function makeIcon(color) {
-      return L.divIcon({ className: '', html: '<div style="width:14px;height:14px;border-radius:50%;background:' + color + ';border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,0.5)"></div>', iconSize: [14, 14], iconAnchor: [7, 7] });
-    }
-
     const markers = [
-      L.marker([entry.boardingCoords.lat, entry.boardingCoords.lng], { icon: makeIcon(trainInfo.color) }).bindPopup(entry.boardingStation),
-      L.marker([HOME_STOP.lat, HOME_STOP.lng], { icon: makeIcon('#64b5f6') }).bindPopup('Home')
+      L.marker([entry.boardingCoords.lat, entry.boardingCoords.lng], { icon: makeMapIcon(trainInfo.color) }).bindPopup(entry.boardingStation),
+      L.marker([HOME_STOP.lat, HOME_STOP.lng], { icon: makeMapIcon('#64b5f6') }).bindPopup('Home')
     ];
     const exitCoords = MUNI_STATIONS[entry.exitStation];
     if (exitCoords) {
-      markers.push(L.marker([exitCoords.lat, exitCoords.lng], { icon: makeIcon('#66bb6a') }).bindPopup('Exit: ' + entry.exitStation));
+      markers.push(L.marker([exitCoords.lat, exitCoords.lng], { icon: makeMapIcon('#66bb6a') }).bindPopup('Exit: ' + entry.exitStation));
     }
-    markers.forEach(m => m.addTo(mapInstance));
-    mapInstance.fitBounds(L.latLngBounds(markers.map(m => m.getLatLng())), { padding: [30, 30] });
+    renderModalMap(markers);
   });
 }
 
@@ -2350,56 +2211,6 @@ function closeModal() {
     mapInstance.remove();
     mapInstance = null;
   }
-}
-
-function renderMap(journey) {
-  if (mapInstance) {
-    mapInstance.remove();
-    mapInstance = null;
-  }
-
-  const mapEl = document.getElementById('modal-map');
-  if (!mapEl) return;
-
-  mapInstance = L.map('modal-map', { zoomControl: false });
-  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-    attribution: '&copy; OSM &amp; CARTO',
-    maxZoom: 18
-  }).addTo(mapInstance);
-
-  const route = BUS_ROUTES[journey.busRoute];
-  const trainInfo = TRAIN_LINE_COLORS[journey.trainLine];
-
-  function makeIcon(color) {
-    return L.divIcon({
-      className: '',
-      html: `<div style="width:14px;height:14px;border-radius:50%;background:${color};border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,0.5)"></div>`,
-      iconSize: [14, 14],
-      iconAnchor: [7, 7]
-    });
-  }
-
-  const markers = [
-    L.marker([journey.busPickup.lat, journey.busPickup.lng], { icon: makeIcon(route.color) })
-      .bindPopup(`<b>${journey.busRoute}</b> pickup<br>${HOME_STOP.name}`),
-    L.marker([journey.transferCoords.lat, journey.transferCoords.lng], { icon: makeIcon(trainInfo.color) })
-      .bindPopup(`<b>${journey.trainLine}</b> at ${journey.transferStation}`),
-    L.marker([journey.destCoords.lat, journey.destCoords.lng], { icon: makeIcon('#66bb6a') })
-      .bindPopup(`Destination`)
-  ];
-
-  // Add exit station marker if different from transfer
-  if (journey.exitStation !== journey.transferStation) {
-    markers.push(
-      L.marker([journey.exitCoords.lat, journey.exitCoords.lng], { icon: makeIcon(trainInfo.color) })
-        .bindPopup(`Exit at ${journey.exitStation}`)
-    );
-  }
-
-  markers.forEach(m => m.addTo(mapInstance));
-
-  const bounds = L.latLngBounds(markers.map(m => m.getLatLng()));
-  mapInstance.fitBounds(bounds, { padding: [30, 30] });
 }
 
 
