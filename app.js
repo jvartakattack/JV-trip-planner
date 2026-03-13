@@ -1190,7 +1190,7 @@ function renderRecCards(recEl, cards, isInbound) {
   const activeWinner = cards[activeIdx].winner;
   recEl._highlightKey = entryKey(activeWinner.journey || activeWinner.entry);
   // Switch tab to match winner's mode (unless user manually picked a tab)
-  if (!isInbound && tabFollowsRec && activeWinner.mode && activeWinner.mode !== activeTab) {
+  if (!isInbound && tabFollowsRec && activeWinner.mode) {
     activeTab = activeWinner.mode;
     document.querySelectorAll('.tab').forEach(t => {
       t.classList.toggle('active', t.dataset.tab === activeTab);
