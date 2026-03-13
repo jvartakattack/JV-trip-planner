@@ -1164,6 +1164,22 @@ function renderRecCards(recEl, cards, isInbound) {
   recEl._recCards = cards;
   recEl._recSlide = 0;
 
+  // Set recommended tab without triggering renderArrivals
+  const initTabMode = cards[0].winner.mode.split('-')[0];
+  document.querySelectorAll('.tab').forEach(tb => {
+    tb.classList.remove('active');
+    tb.querySelector('.tab-rec')?.remove();
+  });
+  const initTarget = document.querySelector(`.tab[data-tab="${initTabMode}"]`);
+  if (initTarget) {
+    initTarget.classList.add('active');
+    const badge = document.createElement('span');
+    badge.className = 'tab-rec';
+    badge.textContent = 'Recommended';
+    initTarget.appendChild(badge);
+  }
+  activeTab = initTabMode;
+
   // Pill tap — switch displayed card
   recEl.querySelectorAll('.rec-pill').forEach(pill => {
     pill.addEventListener('click', e => {
@@ -1294,7 +1310,6 @@ function renderRecommendation(currentTime) {
   if (cards.length === 0) { recEl.classList.add('hidden'); return; }
 
   renderRecCards(recEl, cards, false);
-  switchToTab(cards[0].winner.mode);
 }
 
 function renderAlertsBanner(delays, alerts) {
@@ -2221,7 +2236,6 @@ function renderInboundRecommendation(origin, currentTime) {
   if (cards.length === 0) { recEl.classList.add('hidden'); return; }
 
   renderRecCards(recEl, cards, true);
-  switchToTab(cards[0].winner.mode.split('-')[0]);
 }
 
 function openInboundModal(entry) {
