@@ -166,8 +166,11 @@ h1 {
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  font-size: 14px;
+  font-size: 13px;
   line-height: 1.5;
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+  overflow: hidden;
 }
 
 .recommendation.hidden { display: none; }
@@ -216,6 +219,8 @@ h1 {
 
 .recommendation .rec-summary {
   color: var(--text);
+  word-wrap: break-word;
+  overflow-wrap: break-word;
 }
 
 .recommendation .rec-avail {
