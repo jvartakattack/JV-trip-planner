@@ -1197,7 +1197,8 @@ function renderRecCards(recEl, cards, isInbound) {
   function bodyHtml(c) {
     const availLine = c.winner.availHtml ? `<div class="rec-avail">${c.winner.availHtml}</div>` : '';
     const detailLine = c.winner.detail ? `<div class="rec-detail">${c.winner.detail}</div>` : '';
-    return `<div class="rec-summary">${c.winner.summary}</div>${availLine}${detailLine}`;
+    const debugLine = `<div style="font-size:10px;color:#666;margin-top:4px">mode: ${c.winner.mode} → tab: ${winnerToTab(c.winner.mode, isInbound)}</div>`;
+    return `<div class="rec-summary">${c.winner.summary}</div>${availLine}${detailLine}${debugLine}`;
   }
 
   const prevSlide = recEl._recSlide || 0;
