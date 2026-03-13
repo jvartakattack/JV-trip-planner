@@ -1148,54 +1148,59 @@ function getBestBusJourney(currentTime, destination) {
   }
 }
 
-function initRecSwipe(recEl) {
-  if (recEl._recSwipeInit) return;
-  recEl._recSwipeInit = true;
+function renderRecCards(recEl, cards, isInbound) {
+  const pillsHtml = cards.map((c, i) =>
+    `<button class="rec-pill${i === 0 ? ' active' : ''}" data-idx="${i}">${c.label}</button>`
+  ).join('');
 
-  // Detect which slide is visible after scroll settles
-  function onScrollEnd() {
-    const track = recEl.querySelector('.rec-track');
-    const c = recEl._recCards;
-    if (!track || !c) return;
-    const idx = Math.round(track.scrollLeft / track.offsetWidth);
-    if (idx === recEl._recSlide) return;
-    recEl._recSlide = idx;
-    recEl.querySelectorAll('.rec-dot').forEach((d, i) => d.classList.toggle('active', i === idx));
-    const tabMode = c[idx].winner.mode.split('-')[0];
-    document.querySelectorAll('.tab').forEach(tb => {
-      tb.classList.remove('active');
-      tb.querySelector('.tab-rec')?.remove();
-    });
-    const target = document.querySelector(`.tab[data-tab="${tabMode}"]`);
-    if (target) {
-      target.classList.add('active');
-      const badge = document.createElement('span');
-      badge.className = 'tab-rec';
-      badge.textContent = 'Recommended';
-      target.appendChild(badge);
-    }
-    activeTab = tabMode;
+  function bodyHtml(c) {
+    const availLine = c.winner.availHtml ? `<div class="rec-avail">${c.winner.availHtml}</div>` : '';
+    const detailLine = c.winner.detail ? `<div class="rec-detail">${c.winner.detail}</div>` : '';
+    return `<div class="rec-summary">${c.winner.summary}</div>${availLine}${detailLine}`;
   }
 
-  // Debounced scroll detection — uses capture to catch scroll on .rec-track child
-  let scrollTimer = null;
-  recEl.addEventListener('scroll', () => {
-    clearTimeout(scrollTimer);
-    scrollTimer = setTimeout(onScrollEnd, 150);
-  }, { capture: true, passive: true });
+  recEl.innerHTML = `<div class="rec-pills">${pillsHtml}</div><div class="rec-body">${bodyHtml(cards[0])}</div>`;
+  recEl.classList.remove('hidden');
+  recEl._recCards = cards;
+  recEl._recSlide = 0;
 
-  recEl.addEventListener('click', () => {
-    const c = recEl._recCards;
-    if (!c) return;
-    const w = c[recEl._recSlide].winner;
+  // Pill tap — switch displayed card
+  recEl.querySelectorAll('.rec-pill').forEach(pill => {
+    pill.addEventListener('click', e => {
+      e.stopPropagation();
+      const idx = parseInt(pill.dataset.idx);
+      recEl._recSlide = idx;
+      recEl.querySelectorAll('.rec-pill').forEach((p, i) => p.classList.toggle('active', i === idx));
+      recEl.querySelector('.rec-body').innerHTML = bodyHtml(cards[idx]);
+      // Update tab
+      const tabMode = cards[idx].winner.mode.split('-')[0];
+      document.querySelectorAll('.tab').forEach(tb => {
+        tb.classList.remove('active');
+        tb.querySelector('.tab-rec')?.remove();
+      });
+      const target = document.querySelector(`.tab[data-tab="${tabMode}"]`);
+      if (target) {
+        target.classList.add('active');
+        const badge = document.createElement('span');
+        badge.className = 'tab-rec';
+        badge.textContent = 'Recommended';
+        target.appendChild(badge);
+      }
+      activeTab = tabMode;
+    });
+  });
+
+  // Body tap — open modal
+  recEl.querySelector('.rec-body').addEventListener('click', () => {
+    const w = cards[recEl._recSlide].winner;
     const j = w.journey || w.entry;
-    if (w.mode === 'bus') {
+    if (isInbound) {
+      openInboundModal(j);
+    } else if (w.mode === 'bus') {
       selectedDestination ? openBusDestModal(j) : openDefaultBusModal(j);
     } else if (w.mode === 'ebike') {
       const stationData = MUNI_STATIONS[j.stationName];
       openEbikeModal({ ...j, stationCoords: stationData ? { lat: stationData.lat, lng: stationData.lng } : null });
-    } else if (w.entry) {
-      openInboundModal(j);
     } else {
       openWalkModal(j);
     }
@@ -1288,38 +1293,8 @@ function renderRecommendation(currentTime) {
 
   if (cards.length === 0) { recEl.classList.add('hidden'); return; }
 
-  // Preserve slide position across re-renders
-  const prevSlide = recEl._recSlide || 0;
-  const slideIdx = Math.min(prevSlide, cards.length - 1);
-
-  let dotsHtml = '';
-  if (cards.length > 1) {
-    dotsHtml = `<div class="rec-dots">${cards.map((_, i) => `<span class="rec-dot${i === slideIdx ? ' active' : ''}"></span>`).join('')}</div>`;
-  }
-
-  const slidesHtml = cards.map(c => {
-    const availLine = c.winner.availHtml ? `<div class="rec-avail">${c.winner.availHtml}</div>` : '';
-    const detailLine = c.winner.detail ? `<div class="rec-detail">${c.winner.detail}</div>` : '';
-    return `<div class="rec-slide"><div class="rec-label">${c.label}</div><div class="rec-summary">${c.winner.summary}</div>${availLine}${detailLine}</div>`;
-  }).join('');
-
-  recEl.innerHTML = `<div class="rec-track">${slidesHtml}</div>${dotsHtml}`;
-  recEl.classList.remove('hidden');
-
-  // Restore scroll position to preserved slide
-  if (slideIdx > 0) {
-    const track = recEl.querySelector('.rec-track');
-    requestAnimationFrame(() => { track.scrollLeft = slideIdx * track.offsetWidth; });
-  }
-
-  recEl._recCards = cards;
-  recEl._recSlide = slideIdx;
-  initRecSwipe(recEl);
-
-  if (!recEl._recHasRendered) {
-    recEl._recHasRendered = true;
-    switchToTab(cards[slideIdx].winner.mode);
-  }
+  renderRecCards(recEl, cards, false);
+  switchToTab(cards[0].winner.mode);
 }
 
 function renderAlertsBanner(delays, alerts) {
@@ -2245,36 +2220,8 @@ function renderInboundRecommendation(origin, currentTime) {
 
   if (cards.length === 0) { recEl.classList.add('hidden'); return; }
 
-  const prevSlide = recEl._recSlide || 0;
-  const slideIdx = Math.min(prevSlide, cards.length - 1);
-
-  let dotsHtml = '';
-  if (cards.length > 1) {
-    dotsHtml = `<div class="rec-dots">${cards.map((_, i) => `<span class="rec-dot${i === slideIdx ? ' active' : ''}"></span>`).join('')}</div>`;
-  }
-
-  const slidesHtml = cards.map(c => {
-    const availLine = c.winner.availHtml ? `<div class="rec-avail">${c.winner.availHtml}</div>` : '';
-    const detailLine = c.winner.detail ? `<div class="rec-detail">${c.winner.detail}</div>` : '';
-    return `<div class="rec-slide"><div class="rec-label">${c.label}</div><div class="rec-summary">${c.winner.summary}</div>${availLine}${detailLine}</div>`;
-  }).join('');
-
-  recEl.innerHTML = `<div class="rec-track">${slidesHtml}</div>${dotsHtml}`;
-  recEl.classList.remove('hidden');
-
-  if (slideIdx > 0) {
-    const track = recEl.querySelector('.rec-track');
-    requestAnimationFrame(() => { track.scrollLeft = slideIdx * track.offsetWidth; });
-  }
-
-  recEl._recCards = cards;
-  recEl._recSlide = slideIdx;
-  initRecSwipe(recEl);
-
-  if (!recEl._recHasRendered) {
-    recEl._recHasRendered = true;
-    switchToTab(cards[slideIdx].winner.mode.split('-')[0]);
-  }
+  renderRecCards(recEl, cards, true);
+  switchToTab(cards[0].winner.mode.split('-')[0]);
 }
 
 function openInboundModal(entry) {
@@ -2679,10 +2626,7 @@ document.addEventListener('DOMContentLoaded', () => {
     selectedDestination = null;
     input.value = '';
     destDisplay.classList.add('hidden');
-    const recEl = document.getElementById('recommendation');
-    recEl.classList.add('hidden');
-    recEl._recHasRendered = false;
-    recEl._recSlide = 0;
+    document.getElementById('recommendation').classList.add('hidden');
   }
 
   backBtn.addEventListener('click', goBack);
