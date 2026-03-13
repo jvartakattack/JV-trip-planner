@@ -1411,12 +1411,23 @@ function renderArrivals() {
       inboundEntries = inboundEntries.filter(e => e.lastMileMode !== 'ebike');
     }
 
-    if (inboundEntries.length === 0) {
+    // Direct walk home option (no transit)
+    const directHomeDist = haversineDistance(origin.lat, origin.lng, HOME_STOP.lat, HOME_STOP.lng);
+    const directHomeMin = Math.round((directHomeDist / 5) * 60);
+    const directHomeArrival = new Date(entryTime.getTime() + directHomeMin * 60000);
+    const directHomeEntry = {
+      directWalk: true,
+      totalTime: directHomeMin,
+      arrivalTime: directHomeArrival,
+      destinationName: 'Home'
+    };
+
+    if (inboundEntries.length === 0 && directHomeMin > 120) {
       list.innerHTML = '<div class="empty-state">No inbound options found from here</div>';
       return;
     }
 
-    list.innerHTML = inboundEntries.map((e, i) => {
+    const inboundCards = inboundEntries.map((e, i) => {
       const trainInfo = TRAIN_LINE_COLORS[e.trainLine];
       const trainDepartTime = new Date(currentTime);
       trainDepartTime.setHours(Math.floor(e.trainDepartAbsolute / 60), Math.round(e.trainDepartAbsolute % 60), 0, 0);
@@ -1452,10 +1463,33 @@ function renderArrivals() {
           </div>
         </div>
       `;
-    }).join('');
+    });
+
+    // Direct walk card
+    inboundCards.push(`
+      <div class="arrival-card" data-index="direct-walk">
+        <div class="card-top">
+          <div style="display:flex;align-items:center;gap:10px">
+            <span style="font-size:16px">&#x1F6B6;</span>
+            <span style="font-size:14px;font-weight:600">Walk the whole way</span>
+          </div>
+          <span style="font-size:13px;color:var(--text-dim)">${directHomeMin}m</span>
+        </div>
+        <div class="card-bottom">
+          <span>Home by ${formatTime(directHomeArrival)}</span>
+          <span class="total-time">${formatMinutes(directHomeMin)}</span>
+        </div>
+      </div>
+    `);
+
+    list.innerHTML = inboundCards.join('');
 
     list.querySelectorAll('.arrival-card').forEach(card => {
       card.addEventListener('click', () => {
+        if (card.dataset.index === 'direct-walk') {
+          openDirectWalkModal(directHomeEntry, 'inbound');
+          return;
+        }
         const idx = parseInt(card.dataset.index);
         openInboundModal(inboundEntries[idx]);
       });
@@ -1698,12 +1732,23 @@ function renderArrivals() {
 
       walkEntries.sort((a, b) => a.totalTime - b.totalTime);
 
-      if (walkEntries.length === 0) {
+      // Add direct walk option (no transit)
+      const directWalkDist = haversineDistance(HOME_STOP.lat, HOME_STOP.lng, selectedDestination.lat, selectedDestination.lng);
+      const directWalkMin = Math.round((directWalkDist / 5) * 60); // 5 km/h
+      const directArrival = new Date(entryTime.getTime() + directWalkMin * 60000);
+      const directWalkEntry = {
+        directWalk: true,
+        totalTime: directWalkMin,
+        arrivalTime: directArrival,
+        destinationName: selectedDestination.name || 'Destination'
+      };
+
+      if (walkEntries.length === 0 && directWalkMin > 120) {
         list.innerHTML = '<div class="empty-state">No upcoming transit options found</div>';
         return;
       }
 
-      list.innerHTML = alertsBanner + walkEntries.map((e, i) => {
+      const allWalkCards = walkEntries.map((e, i) => {
         const trainInfo = TRAIN_LINE_COLORS[e.trainLine];
         const trainDelayBadge = getDelayBadge(e.trainLine, delays);
         return `
@@ -1726,10 +1771,33 @@ function renderArrivals() {
             </div>
           </div>
         `;
-      }).join('');
+      });
+
+      // Direct walk card
+      allWalkCards.push(`
+        <div class="arrival-card" data-index="direct-walk">
+          <div class="card-top">
+            <div style="display:flex;align-items:center;gap:10px">
+              <span style="font-size:16px">&#x1F6B6;</span>
+              <span style="font-size:14px;font-weight:600">Walk the whole way</span>
+            </div>
+            <span style="font-size:13px;color:var(--text-dim)">${directWalkMin}m</span>
+          </div>
+          <div class="card-bottom">
+            <span>Arrive by ${formatTime(directArrival)}</span>
+            <span class="total-time">${formatMinutes(directWalkMin)}</span>
+          </div>
+        </div>
+      `);
+
+      list.innerHTML = alertsBanner + allWalkCards.join('');
 
       list.querySelectorAll('.arrival-card').forEach(card => {
         card.addEventListener('click', () => {
+          if (card.dataset.index === 'direct-walk') {
+            openDirectWalkModal(directWalkEntry, 'outbound');
+            return;
+          }
           const idx = parseInt(card.dataset.index);
           openOutboundModal(walkEntries[idx], 'walk');
         });
@@ -1903,6 +1971,59 @@ function renderModalMap(markers) {
   }).addTo(mapInstance);
   markers.forEach(m => m.addTo(mapInstance));
   mapInstance.fitBounds(L.latLngBounds(markers.map(m => m.getLatLng())), { padding: [30, 30] });
+}
+
+function openDirectWalkModal(entry, direction) {
+  const overlay = document.getElementById('modal-overlay');
+  const content = document.getElementById('modal-content');
+
+  const startLabel = direction === 'outbound' ? HOME_STOP.name : (selectedDestination?.name || 'Current location');
+  const endLabel = entry.destinationName || (direction === 'outbound' ? 'Destination' : 'Home');
+  const startCoords = direction === 'outbound'
+    ? { lat: HOME_STOP.lat, lng: HOME_STOP.lng }
+    : { lat: selectedDestination.lat, lng: selectedDestination.lng };
+  const endCoords = direction === 'outbound'
+    ? { lat: selectedDestination.lat, lng: selectedDestination.lng }
+    : { lat: HOME_STOP.lat, lng: HOME_STOP.lng };
+
+  content.innerHTML = `
+    <div class="journey-header">
+      <span style="font-size:22px">&#x1F6B6;</span>
+      <div>
+        <div class="journey-total">${formatMinutes(entry.totalTime)}</div>
+        <div class="journey-total-label">walk to ${endLabel} &middot; arrive by ${formatTime(entry.arrivalTime)}</div>
+      </div>
+    </div>
+    <div class="timeline">
+      <div class="timeline-step">
+        <div class="timeline-line">
+          <div class="timeline-dot walk"></div>
+          <div class="timeline-connector"></div>
+        </div>
+        <div class="timeline-content">
+          <div class="timeline-title">${startLabel}</div>
+          <div class="timeline-detail">Start walking</div>
+          <div class="timeline-duration">${entry.totalTime} min walk</div>
+        </div>
+      </div>
+      <div class="timeline-step">
+        <div class="timeline-line">
+          <div class="timeline-dot destination"></div>
+        </div>
+        <div class="timeline-content">
+          <div class="timeline-title">${endLabel}</div>
+          <div class="timeline-detail">Arrive by ${formatTime(entry.arrivalTime)}</div>
+        </div>
+      </div>
+    </div>
+    <div id="modal-map" style="width:100%;height:260px;border-radius:var(--radius);margin-top:4px;z-index:1"></div>
+  `;
+
+  overlay.classList.remove('hidden');
+  renderModalMap([
+    L.marker([startCoords.lat, startCoords.lng], { icon: makeMapIcon('#9aa0b0') }).bindTooltip(startLabel),
+    L.marker([endCoords.lat, endCoords.lng], { icon: makeMapIcon('#66bb6a') }).bindTooltip(endLabel)
+  ]);
 }
 
 function openOutboundModal(entry, mode) {
