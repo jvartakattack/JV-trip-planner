@@ -1899,8 +1899,8 @@ function openDefaultBusModal(entry) {
     <div class="journey-header">
       <span class="route-badge ${route.cssClass}">${entry.busRoute}</span>
       <div>
-        <div class="journey-total">${trainInfo.name} at ${formatTime(trainDepartTime)}</div>
-        <div class="journey-total-label">via ${entry.transferStation}</div>
+        <div class="journey-total">Catch ${trainInfo.name}</div>
+        <div class="journey-total-label">${entry.transferStation} · departs ${formatTime(trainDepartTime)}</div>
       </div>
     </div>
 
