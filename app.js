@@ -924,6 +924,7 @@ function buildDefaultEntries(currentTime) {
         trainDepartureMin: bestTrain.departureMinutes,
         availableLines: route.trainLines,
         trainDepartAbsolute: bestTrain.departureMinutes,
+        timeToTrain: Math.round(bestTrain.departureMinutes - nowMin),
         isRealTime: arrival.isRealTime || bestTrain.isRealTime
       });
     }
@@ -974,6 +975,7 @@ function buildEbikeEntries(currentTime) {
         trainLine: line,
         trainWait: Math.round(waitAtStation),
         trainDepartAbsolute: trainAtThisStation,
+        timeToTrain: Math.round(trainAtThisStation - nowMin),
         availableLines: station.lines,
         isRealTime: train.isRealTime
       });
@@ -1028,6 +1030,7 @@ function buildWalkEntries(currentTime) {
       trainLine: line,
       trainWait: Math.round(waitAtStation),
       trainDepartAbsolute: trainAtThisStation,
+      timeToTrain: Math.round(trainAtThisStation - nowMin),
       isRealTime: train.isRealTime
     });
   }
@@ -1913,7 +1916,7 @@ function openDefaultBusModal(entry) {
     <div class="journey-header">
       <span class="route-badge ${route.cssClass}">${entry.busRoute}</span>
       <div>
-        <div class="journey-total">${formatMinutes(entry.trainDepartureMin - minutesSinceMidnight(now()))} to train</div>
+        <div class="journey-total">${formatMinutes(entry.timeToTrain)} to train</div>
         <div class="journey-total-label">via ${entry.transferStation} &middot; ${trainInfo.name} at ${formatTime(trainDepartTime)}</div>
       </div>
     </div>
@@ -1988,7 +1991,7 @@ function openEbikeModal(entry) {
     <div class="journey-header">
       <span style="font-size:22px">&#x1f6b2;</span>
       <div>
-        <div class="journey-total">${hasExit ? formatMinutes(entry.totalTime) + ' to ' + entry.exitStation : formatMinutes(departMin - minutesSinceMidnight(now())) + ' to train'}</div>
+        <div class="journey-total">${hasExit ? formatMinutes(entry.totalTime) + ' to ' + entry.exitStation : formatMinutes(entry.timeToTrain) + ' to train'}</div>
         <div class="journey-total-label">via ${entry.stationName} &middot; ${hasExit ? 'arrive by ' + formatTime(entry.arrivalTime) : trainInfo.name + ' at ' + formatTime(trainDepartTime)}</div>
       </div>
     </div>
@@ -2086,7 +2089,7 @@ function openWalkModal(entry) {
     <div class="journey-header">
       <span style="font-size:22px">&#x1F6B6;</span>
       <div>
-        <div class="journey-total">${hasExit ? formatMinutes(entry.totalTime) + ' to ' + entry.exitStation : formatMinutes(departMin - minutesSinceMidnight(now())) + ' to train'}</div>
+        <div class="journey-total">${hasExit ? formatMinutes(entry.totalTime) + ' to ' + entry.exitStation : formatMinutes(entry.timeToTrain) + ' to train'}</div>
         <div class="journey-total-label">via ${entry.stationName} &middot; ${hasExit ? 'arrive by ' + formatTime(entry.arrivalTime) : trainInfo.name + ' at ' + formatTime(trainDepartTime)}</div>
       </div>
     </div>
@@ -2576,6 +2579,9 @@ document.addEventListener('DOMContentLoaded', () => {
   async function enterApp(direction) {
     activeDirection = direction;
     input.placeholder = direction === 'inbound' ? 'Where are you coming from?' : 'Where are you going?';
+    // Reset recommendation pill to default on direction switch
+    const recEl = document.getElementById('recommendation');
+    if (recEl) recEl._recSlide = 0;
 
     const showApp = async () => {
       landing.classList.add('hidden');
