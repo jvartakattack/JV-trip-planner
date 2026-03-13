@@ -876,6 +876,7 @@ let selectedDestination = null;
 let journeys = [];
 let mapInstance = null;
 let activeTab = 'bus';
+let tabFollowsRec = true;
 let activeDirection = 'outbound';
 
 function updateClock() {
@@ -1188,6 +1189,13 @@ function renderRecCards(recEl, cards, isInbound) {
   // Store highlight key for the active winner
   const activeWinner = cards[activeIdx].winner;
   recEl._highlightKey = entryKey(activeWinner.journey || activeWinner.entry);
+  // Switch tab to match winner's mode (unless user manually picked a tab)
+  if (!isInbound && tabFollowsRec && activeWinner.mode && activeWinner.mode !== activeTab) {
+    activeTab = activeWinner.mode;
+    document.querySelectorAll('.tab').forEach(t => {
+      t.classList.toggle('active', t.dataset.tab === activeTab);
+    });
+  }
   // Update pill active state to match preserved selection
   recEl.querySelectorAll('.rec-pill').forEach((p, i) => p.classList.toggle('active', i === activeIdx));
 
@@ -1197,15 +1205,8 @@ function renderRecCards(recEl, cards, isInbound) {
       e.stopPropagation();
       const idx = parseInt(pill.dataset.idx);
       recEl._recSlide = idx;
-      const w = cards[idx].winner;
-      // Switch tab to match winner's mode
-      if (!isInbound && w.mode && w.mode !== activeTab) {
-        activeTab = w.mode;
-        document.querySelectorAll('.tab').forEach(t => {
-          t.classList.toggle('active', t.dataset.tab === activeTab);
-        });
-      }
-      // Re-render arrivals list (also re-renders rec cards with preserved pill)
+      tabFollowsRec = true;
+      // Re-render arrivals list (renderRecCards will switch tab to match winner)
       renderArrivals();
     });
   });
@@ -2422,9 +2423,10 @@ document.addEventListener('DOMContentLoaded', () => {
   async function enterApp(direction) {
     activeDirection = direction;
     input.placeholder = direction === 'inbound' ? 'Where are you coming from?' : 'Where are you going?';
-    // Reset recommendation pill to default on direction switch
+    // Reset recommendation pill and tab-follow on direction switch
     const recEl = document.getElementById('recommendation');
     if (recEl) recEl._recSlide = 0;
+    tabFollowsRec = true;
 
     const showApp = async () => {
       landing.classList.add('hidden');
@@ -2497,6 +2499,7 @@ document.addEventListener('DOMContentLoaded', () => {
       document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
       tab.classList.add('active');
       activeTab = tab.dataset.tab;
+      tabFollowsRec = false;
       renderArrivals();
     });
   });
