@@ -1194,8 +1194,10 @@ function renderRecCards(recEl, cards, isInbound) {
     let targetTab;
     if (isInbound) {
       // Inbound mode is "firstMile-lastMile" e.g. "ebike-walk", "walk-ebike"
-      const firstMile = activeWinner.mode.split('-')[0];
-      targetTab = firstMile === 'ebike' ? 'ebike' : 'bus';
+      const [firstMile, lastMile] = activeWinner.mode.split('-');
+      if (firstMile === 'ebike') targetTab = 'ebike';
+      else if (lastMile === 'ebike') targetTab = 'bus'; // walk+ebike only visible on Bus tab
+      else targetTab = 'walk'; // walk+walk → Walk tab
     } else {
       targetTab = activeWinner.mode;
     }
