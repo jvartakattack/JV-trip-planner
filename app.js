@@ -2492,8 +2492,8 @@ function closeModal() {
 document.addEventListener('DOMContentLoaded', () => {
   const input = document.getElementById('destination-input');
   const searchBtn = document.getElementById('search-btn');
+  const clearDestBtn = document.getElementById('clear-dest-btn');
   const suggestionsEl = document.getElementById('suggestions');
-  const destDisplay = document.getElementById('destination-display');
   const modalOverlay = document.getElementById('modal-overlay');
   const modalClose = document.getElementById('modal-close');
 
@@ -2714,7 +2714,9 @@ document.addEventListener('DOMContentLoaded', () => {
     landing.classList.remove('hidden');
     selectedDestination = null;
     input.value = '';
-    destDisplay.classList.add('hidden');
+    input.readOnly = false;
+    searchBtn.classList.remove('hidden');
+    clearDestBtn.classList.add('hidden');
     document.getElementById('recommendation').classList.add('hidden');
   }
 
@@ -2805,19 +2807,24 @@ document.addEventListener('DOMContentLoaded', () => {
     if (e.key === 'Escape') closeModal();
   });
 
+  function clearDestination() {
+    selectedDestination = null;
+    input.value = '';
+    input.readOnly = false;
+    searchBtn.classList.remove('hidden');
+    clearDestBtn.classList.add('hidden');
+    renderArrivals();
+  }
+
+  clearDestBtn.addEventListener('click', clearDestination);
+
   function selectDestination(dest) {
     selectedDestination = dest;
-    input.value = dest.short;
+    input.value = dest.short + (dest.context ? ', ' + dest.context : '');
+    input.readOnly = true;
     suggestionsEl.classList.add('hidden');
-    const label = activeDirection === 'inbound' ? 'From' : 'To';
-    destDisplay.innerHTML = `<span class="dest-label">${label}</span> ${dest.short}${dest.context ? ', ' + dest.context : ''}<button id="clear-dest" style="margin-left:auto;background:none;border:none;color:var(--text-dim);cursor:pointer;font-size:16px;padding:0 4px" aria-label="Clear destination">&times;</button>`;
-    destDisplay.classList.remove('hidden');
-    document.getElementById('clear-dest').addEventListener('click', () => {
-      selectedDestination = null;
-      input.value = '';
-      destDisplay.classList.add('hidden');
-      renderArrivals();
-    });
+    searchBtn.classList.add('hidden');
+    clearDestBtn.classList.remove('hidden');
     renderArrivals();
   }
 

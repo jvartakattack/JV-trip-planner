@@ -473,6 +473,11 @@ h1 {
 
 #destination-input:focus { border-color: var(--accent); }
 #destination-input::placeholder { color: var(--text-dim); }
+#destination-input[readonly] {
+  border-color: var(--accent);
+  color: var(--accent);
+  cursor: default;
+}
 
 #search-btn {
   background: var(--accent);
@@ -487,6 +492,24 @@ h1 {
 }
 
 #search-btn:hover { opacity: 0.85; }
+#search-btn.hidden { display: none; }
+
+.clear-dest-btn {
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0 14px;
+  color: var(--text-dim);
+  font-size: 20px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  transition: color 0.2s, border-color 0.2s;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.clear-dest-btn:hover { color: var(--text); border-color: var(--text-dim); }
+.clear-dest-btn.hidden { display: none; }
 
 .suggestions {
   position: absolute;
@@ -514,27 +537,6 @@ h1 {
 .suggestion-item:last-child { border-bottom: none; }
 .suggestion-item:hover { background: var(--surface-hover); }
 
-.destination-display {
-  margin-top: 12px;
-  padding: 10px 14px;
-  background: var(--surface);
-  border-radius: var(--radius);
-  font-size: 13px;
-  color: var(--text-dim);
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.destination-display.hidden { display: none; }
-
-.destination-display .dest-label {
-  color: var(--green);
-  font-weight: 600;
-  text-transform: uppercase;
-  font-size: 11px;
-  letter-spacing: 0.5px;
-}
 
 /* ── Arrivals List ───────────────────────────────────── */
 .arrivals-list {
