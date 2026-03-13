@@ -1195,10 +1195,37 @@ function renderRecCards(recEl, cards, isInbound) {
     `<button class="rec-pill${i === 0 ? ' active' : ''}" data-idx="${i}">${c.label}</button>`
   ).join('');
 
+  const stepIcons = {
+    bus: '&#x1F68D;', train: '&#x1F686;', ebike: '&#x1F6B2;',
+    walk: '&#x1F6B6;', home: '&#x1F3E0;', arrive: '&#x1F3C1;'
+  };
+
   function bodyHtml(c) {
-    const availLine = c.winner.availHtml ? `<div class="rec-avail">${c.winner.availHtml}</div>` : '';
-    const detailLine = c.winner.detail ? `<div class="rec-detail">${c.winner.detail}</div>` : '';
-    return `<div class="rec-summary">${c.winner.summary}</div>${availLine}${detailLine}`;
+    const w = c.winner;
+    const availLine = w.availHtml ? `<div class="rec-avail">${w.availHtml}</div>` : '';
+    const detailLine = w.detail ? `<div class="rec-detail">${w.detail}</div>` : '';
+
+    if (w.steps && w.steps.length > 0) {
+      const stepsHtml = w.steps.map(s => {
+        const icon = stepIcons[s.icon] || '';
+        let labelHtml = '';
+        if (s.badge && s.label) {
+          const isTrain = s.icon === 'train';
+          const badgeClass = isTrain ? `train-badge ${s.badge}` : `route-badge ${s.badge}`;
+          labelHtml = `<span class="${badgeClass}" style="font-size:11px;padding:1px 6px">${s.label}</span>`;
+        }
+        const totalHtml = s.total ? `<span class="rec-step-total">${s.total}</span>` : '';
+        return `<div class="rec-step">
+          <span class="rec-step-icon">${icon}</span>
+          ${labelHtml}
+          <span class="rec-step-text">${s.text}</span>
+          ${totalHtml}
+        </div>`;
+      }).join('<span class="rec-step-arrow">›</span>');
+      return `<div class="rec-steps">${stepsHtml}</div>${availLine}${detailLine}`;
+    }
+
+    return `<div class="rec-summary">${w.summary}</div>${availLine}${detailLine}`;
   }
 
   const prevSlide = recEl._recSlide || 0;
@@ -1274,40 +1301,67 @@ function getOutboundWinner(currentTime) {
 
   if (selectedDestination) {
     if (bestBus) {
-      const trainName = TRAIN_LINE_COLORS[bestBus.trainLine].name;
+      const trainInfo = TRAIN_LINE_COLORS[bestBus.trainLine];
       candidates.push({ min: bestBus.arrivalMin, mode: 'bus', modeCount: 3, journey: bestBus,
-        summary: `Take the ${bestBus.busRoute} to ${bestBus.transferStation}, catch the ${trainName} to ${bestBus.exitStation}. Arrive by ${formatTime(bestBus.arrivalTime)}.`
+        summary: `Take the ${bestBus.busRoute} to ${bestBus.transferStation}, catch the ${trainInfo.name} to ${bestBus.exitStation}. Arrive by ${formatTime(bestBus.arrivalTime)}.`,
+        steps: [
+          { icon: 'bus', label: bestBus.busRoute, text: `to ${bestBus.transferStation}`, badge: BUS_ROUTES[bestBus.busRoute]?.cssClass },
+          { icon: 'train', label: bestBus.trainLine, text: `to ${bestBus.exitStation}`, badge: trainInfo.cssClass },
+          { icon: 'arrive', text: `Arrive by ${formatTime(bestBus.arrivalTime)}`, total: formatMinutes(bestBus.totalTime) }
+        ]
       });
     }
     if (bestBike) {
-      const trainName = TRAIN_LINE_COLORS[bestBike.trainLine].name;
+      const trainInfo = TRAIN_LINE_COLORS[bestBike.trainLine];
       candidates.push({ min: bestBike.arrivalMin, mode: 'ebike', modeCount: 3, journey: bestBike,
-        summary: `Pick up e-bike near home, bike to ${bestBike.stationName}, catch the ${trainName} to ${bestBike.exitStation}. Arrive by ${formatTime(bestBike.arrivalTime)}.`
+        summary: `Pick up e-bike near home, bike to ${bestBike.stationName}, catch the ${trainInfo.name} to ${bestBike.exitStation}. Arrive by ${formatTime(bestBike.arrivalTime)}.`,
+        steps: [
+          { icon: 'ebike', text: `Bike to ${bestBike.stationName}` },
+          { icon: 'train', label: bestBike.trainLine, text: `to ${bestBike.exitStation}`, badge: trainInfo.cssClass },
+          { icon: 'arrive', text: `Arrive by ${formatTime(bestBike.arrivalTime)}`, total: formatMinutes(bestBike.totalTime) }
+        ]
       });
     }
     if (bestWalk) {
-      const trainName = TRAIN_LINE_COLORS[bestWalk.trainLine].name;
+      const trainInfo = TRAIN_LINE_COLORS[bestWalk.trainLine];
       candidates.push({ min: bestWalk.arrivalMin, mode: 'walk', modeCount: 2, journey: bestWalk,
-        summary: `Walk to ${bestWalk.stationName}, catch the ${trainName} to ${bestWalk.exitStation}. Arrive by ${formatTime(bestWalk.arrivalTime)}.`
+        summary: `Walk to ${bestWalk.stationName}, catch the ${trainInfo.name} to ${bestWalk.exitStation}. Arrive by ${formatTime(bestWalk.arrivalTime)}.`,
+        steps: [
+          { icon: 'walk', text: `Walk to ${bestWalk.stationName}` },
+          { icon: 'train', label: bestWalk.trainLine, text: `to ${bestWalk.exitStation}`, badge: trainInfo.cssClass },
+          { icon: 'arrive', text: `Arrive by ${formatTime(bestWalk.arrivalTime)}`, total: formatMinutes(bestWalk.totalTime) }
+        ]
       });
     }
   } else {
     if (bestBus) {
-      const trainName = TRAIN_LINE_COLORS[bestBus.trainLine].name;
+      const trainInfo = TRAIN_LINE_COLORS[bestBus.trainLine];
       candidates.push({ min: bestBus.trainDepartMin, mode: 'bus', modeCount: 3, journey: bestBus,
-        summary: `Take the ${bestBus.busRoute} to ${bestBus.transferStation}, catch the ${trainName} at ${formatTime(bestBus.departTime)}.`
+        summary: `Take the ${bestBus.busRoute} to ${bestBus.transferStation}, catch the ${trainInfo.name} at ${formatTime(bestBus.departTime)}.`,
+        steps: [
+          { icon: 'bus', label: bestBus.busRoute, text: `to ${bestBus.transferStation}`, badge: BUS_ROUTES[bestBus.busRoute]?.cssClass },
+          { icon: 'train', label: bestBus.trainLine, text: `at ${formatTime(bestBus.departTime)}`, badge: trainInfo.cssClass }
+        ]
       });
     }
     if (bestBike) {
-      const trainName = TRAIN_LINE_COLORS[bestBike.trainLine].name;
+      const trainInfo = TRAIN_LINE_COLORS[bestBike.trainLine];
       candidates.push({ min: bestBike.trainDepartMin, mode: 'ebike', modeCount: 3, journey: bestBike,
-        summary: `Pick up e-bike near home, bike to ${bestBike.stationName}, catch the ${trainName} at ${formatTime(bestBike.departTime)}.`
+        summary: `Pick up e-bike near home, bike to ${bestBike.stationName}, catch the ${trainInfo.name} at ${formatTime(bestBike.departTime)}.`,
+        steps: [
+          { icon: 'ebike', text: `Bike to ${bestBike.stationName}` },
+          { icon: 'train', label: bestBike.trainLine, text: `at ${formatTime(bestBike.departTime)}`, badge: trainInfo.cssClass }
+        ]
       });
     }
     if (bestWalk) {
-      const trainName = TRAIN_LINE_COLORS[bestWalk.trainLine].name;
+      const trainInfo = TRAIN_LINE_COLORS[bestWalk.trainLine];
       candidates.push({ min: bestWalk.trainDepartMin, mode: 'walk', modeCount: 2, journey: bestWalk,
-        summary: `Walk to ${bestWalk.stationName}, catch the ${trainName} at ${formatTime(bestWalk.departTime)}.`
+        summary: `Walk to ${bestWalk.stationName}, catch the ${trainInfo.name} at ${formatTime(bestWalk.departTime)}.`,
+        steps: [
+          { icon: 'walk', text: `Walk to ${bestWalk.stationName}` },
+          { icon: 'train', label: bestWalk.trainLine, text: `at ${formatTime(bestWalk.departTime)}`, badge: trainInfo.cssClass }
+        ]
       });
     }
   }
@@ -2252,13 +2306,28 @@ function getInboundWinner(origin, currentTime) {
     if (e.lastMileMode === 'ebike' && ebikeAvailability.westPortal !== null) {
       availParts.push(`${ebikeAvailability.westPortal} e-bike${ebikeAvailability.westPortal !== 1 ? 's' : ''} available at West Portal`);
     }
+    const trainInfo = TRAIN_LINE_COLORS[e.trainLine];
     const modeTypes = new Set([mode, 'train', e.lastMileMode || 'walk']);
+    const steps = [];
+    if (mode === 'ebike') {
+      steps.push({ icon: 'ebike', text: `Bike to ${e.boardingStation}` });
+    } else {
+      steps.push({ icon: 'walk', text: `Walk to ${e.boardingStation}` });
+    }
+    steps.push({ icon: 'train', label: e.trainLine, text: `to ${e.exitStation}`, badge: trainInfo.cssClass });
+    if (e.lastMileMode === 'ebike') {
+      steps.push({ icon: 'ebike', text: 'E-bike home' });
+    } else {
+      steps.push({ icon: 'home', text: 'Walk home' });
+    }
+    steps.push({ icon: 'arrive', text: `Home by ${formatTime(e.arrivalTime)}`, total: formatMinutes(e.totalTime) });
     candidates.push({
       min: e.arrivalMin,
       mode: `${mode}-${e.lastMileMode || 'walk'}`,
       modeCount: modeTypes.size,
       entry: e,
       summary: `${firstMileDesc}, catch the ${trainName} to ${e.exitStation}, ${lastMileDesc}. Home by ${formatTime(e.arrivalTime)}.`,
+      steps,
       availHtml: availParts.length > 0 ? availParts.join(' · ') : ''
     });
   }
