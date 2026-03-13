@@ -2472,6 +2472,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   async function enterApp(direction) {
     activeDirection = direction;
+    document.querySelector('#app header h1').textContent = direction === 'inbound' ? 'Inbound' : 'Outbound';
     input.placeholder = direction === 'inbound' ? 'Where are you coming from?' : 'Where are you going?';
     // Reset recommendation pill and tab-follow on direction switch
     const recEl = document.getElementById('recommendation');
@@ -2543,6 +2544,11 @@ document.addEventListener('DOMContentLoaded', () => {
       goBack();
     }
   }, { passive: true });
+
+  // Explore toggle
+  document.getElementById('explore-toggle').addEventListener('click', () => {
+    document.getElementById('explore-section').classList.toggle('collapsed');
+  });
 
   // Tabs
   document.querySelectorAll('.tab').forEach(tab => {

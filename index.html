@@ -15,7 +15,7 @@
   <meta name="apple-mobile-web-app-title" content="JV Trips" />
   <link rel="apple-touch-icon" id="apple-icon" href="icon-192.png" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <link rel="stylesheet" href="styles.css?v=20" />
+  <link rel="stylesheet" href="styles.css?v=21" />
   <script>
     // Kill any existing service worker immediately
     if ('serviceWorker' in navigator) {
@@ -69,16 +69,26 @@
       </div>
       <div id="destination-display" class="destination-display hidden"></div>
       <div id="recommendation" class="recommendation hidden"></div>
-      <div class="tabs">
-        <button class="tab active" data-tab="bus">Bus</button>
-        <button class="tab" data-tab="ebike">E-Bike</button>
-        <button class="tab" data-tab="walk">Walk</button>
-      </div>
     </header>
 
     <main>
-      <div id="arrivals-list" class="arrivals-list">
-        <div class="empty-state">Loading...</div>
+      <div id="explore-section" class="explore-section collapsed">
+        <button id="explore-toggle" class="explore-toggle">
+          <span class="explore-label">Explore routes</span>
+          <span class="explore-chevron">&#x203A;</span>
+        </button>
+        <div class="explore-content">
+          <div class="explore-inner">
+            <div class="tabs">
+              <button class="tab active" data-tab="bus">Bus</button>
+              <button class="tab" data-tab="ebike">E-Bike</button>
+              <button class="tab" data-tab="walk">Walk</button>
+            </div>
+            <div id="arrivals-list" class="arrivals-list">
+              <div class="empty-state">Loading...</div>
+            </div>
+          </div>
+        </div>
       </div>
     </main>
   </div>
@@ -92,7 +102,7 @@
   </div>
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <script src="app.js?v=20"></script>
+  <script src="app.js?v=21"></script>
   <script>
     // Generate emoji app icon dynamically
     (function() {

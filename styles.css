@@ -235,6 +235,62 @@ h1 {
   margin-top: 4px;
 }
 
+/* ── Explore Section ─────────────────────────────────── */
+.explore-section {
+  margin-top: 8px;
+}
+
+.explore-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 12px 16px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.explore-toggle:hover {
+  background: var(--surface-hover);
+  border-color: var(--accent);
+}
+
+.explore-chevron {
+  font-size: 18px;
+  font-weight: 300;
+  color: var(--text-dim);
+  transition: transform 0.25s ease;
+  display: inline-block;
+}
+
+.explore-section:not(.collapsed) .explore-chevron {
+  transform: rotate(90deg);
+}
+
+.explore-content {
+  overflow: hidden;
+  max-height: 2000px;
+  opacity: 1;
+  transition: max-height 0.35s ease, opacity 0.25s ease;
+}
+
+.explore-section.collapsed .explore-content {
+  max-height: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.explore-content .tabs {
+  margin-top: 10px;
+}
+
 /* ── Tabs ────────────────────────────────────────────── */
 .tabs {
   display: flex;
