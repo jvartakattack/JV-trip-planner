@@ -645,7 +645,8 @@ async function reverseGeocode(lat, lng) {
 const GBFS_STATION_INFO_URL = 'https://gbfs.lyft.com/gbfs/2.3/bay/en/station_information.json';
 const GBFS_STATION_STATUS_URL = 'https://gbfs.lyft.com/gbfs/2.3/bay/en/station_status.json';
 const WEST_PORTAL_DOCK_ID = '2114365359206953814'; // "West Portal MUNI" dock
-const EBIKE_RIDE_HOME_MIN = 5; // West Portal → home by e-bike
+const EBIKE_RIDE_HOME_MIN = 5;  // West Portal → home-area dock by e-bike
+const WALK_FROM_DOCK_MIN = 7;   // dock → home on foot (same ~7 min as outbound)
 
 // Home-area Bay Wheels docks (24th Ave at Quintara & 21st Ave at Noriega)
 // These are new docks not yet in the GBFS feed — matched by proximity at runtime
@@ -714,8 +715,8 @@ async function refreshEbikeAvailability() {
 
 // Home-area exit stations for inbound trips
 const INBOUND_EXIT_STATIONS = {
-  'Taraval & 19th': { walkHome: 12, ebikeHome: null },
-  'West Portal':    { walkHome: 18, ebikeHome: EBIKE_RIDE_HOME_MIN }
+  'Taraval & 19th': { walkHome: 12, ebikeHome: null, ebikeRide: null, walkFromDock: null },
+  'West Portal':    { walkHome: 18, ebikeHome: EBIKE_RIDE_HOME_MIN + WALK_FROM_DOCK_MIN, ebikeRide: EBIKE_RIDE_HOME_MIN, walkFromDock: WALK_FROM_DOCK_MIN }
 };
 
 // Buses catchable near exit stations that go toward home
@@ -816,6 +817,8 @@ function buildInboundEntries(origin, currentTime, firstMileMode) {
         exitStation: 'Home',
         lastMileMode: 'ebike',
         lastMileTime: exitInfo.ebikeHome,
+        ebikeRideHome: exitInfo.ebikeRide,
+        walkFromDock: exitInfo.walkFromDock,
         walkHome: exitInfo.ebikeHome,
         totalTime,
         arrivalTime: arrivalDate,
@@ -942,7 +945,7 @@ function buildInboundEntries(origin, currentTime, firstMileMode) {
       // Generate last-mile variants: walk home, and e-bike home if available at this station
       const lastMileOptions = [{ mode: 'walk', time: exitInfo.walkHome }];
       if (exitInfo.ebikeHome && ebikeAvailability.westPortal > 0) {
-        lastMileOptions.push({ mode: 'ebike', time: exitInfo.ebikeHome });
+        lastMileOptions.push({ mode: 'ebike', time: exitInfo.ebikeHome, ebikeRide: exitInfo.ebikeRide, walkFromDock: exitInfo.walkFromDock });
       }
 
       for (const lastMile of lastMileOptions) {
@@ -968,6 +971,8 @@ function buildInboundEntries(origin, currentTime, firstMileMode) {
           exitStation: exitName,
           lastMileMode: lastMile.mode,
           lastMileTime: lastMile.time,
+          ebikeRideHome: lastMile.ebikeRide || null,
+          walkFromDock: lastMile.walkFromDock || null,
           walkHome: lastMile.time,
           totalTime,
           arrivalTime: arrivalDate,
@@ -1729,7 +1734,9 @@ function renderArrivals() {
         : `${e.firstMileTime}m walk`;
       const firstMileIcon = e.firstMileMode === 'ebike' ? '&#x1f6b2;' : '&#x1F6B6;';
 
-      const lastMileLabel = e.lastMileMode === 'ebike' ? `${e.lastMileTime}m e-bike` : `${e.walkHome}m walk`;
+      const lastMileLabel = e.lastMileMode === 'ebike'
+        ? `${e.ebikeRideHome || e.lastMileTime}m bike + ${e.walkFromDock || 0}m walk`
+        : `${e.walkHome}m walk`;
       const lastMileIcon = e.lastMileMode === 'ebike' ? '&#x1f6b2;' : '&#x1F3E0;';
 
       return `
@@ -2548,9 +2555,10 @@ function getInboundWinner(origin, currentTime) {
         mode: 'direct-ebike',
         modeCount: 1,
         entry: e,
-        summary: `E-bike home from ${e.boardingStation}. Home by ${formatTime(e.arrivalTime)}.`,
+        summary: `E-bike from ${e.boardingStation}, ${e.ebikeRideHome || e.lastMileTime} min ride + ${e.walkFromDock || 0} min walk. Home by ${formatTime(e.arrivalTime)}.`,
         steps: [
-          { icon: 'ebike', text: 'E-bike home' },
+          { icon: 'ebike', text: `E-bike toward home (${e.ebikeRideHome || e.lastMileTime} min)` },
+          { icon: 'walk', text: `Walk from dock (${e.walkFromDock || 0} min)` },
           { icon: 'arrive', text: `Home by ${formatTime(e.arrivalTime)}`, total: formatMinutes(e.totalTime) }
         ],
         availHtml: availParts.length > 0 ? availParts.join(' · ') : ''
@@ -2563,7 +2571,7 @@ function getInboundWinner(origin, currentTime) {
     const firstMileDesc = mode === 'ebike'
       ? `Pick up e-bike${dockLabel}, bike to ${e.boardingStation}`
       : `Walk to ${e.boardingStation}`;
-    const lastMileDesc = e.lastMileMode === 'ebike' ? 'e-bike home' : 'walk home';
+    const lastMileDesc = e.lastMileMode === 'ebike' ? 'e-bike + walk home' : 'walk home';
     const availParts = [];
     if (mode === 'ebike' && e.dockEbikes !== null && e.dockName) {
       availParts.push(`${e.dockEbikes} e-bike${e.dockEbikes !== 1 ? 's' : ''} available at ${e.dockName}`);
@@ -2581,9 +2589,9 @@ function getInboundWinner(origin, currentTime) {
     }
     steps.push({ icon: 'train', label: e.trainLine, text: `to ${e.exitStation}`, badge: trainInfo.cssClass });
     if (e.lastMileMode === 'ebike') {
-      steps.push({ icon: 'ebike', text: 'E-bike home' });
+      steps.push({ icon: 'ebike', text: `E-bike + walk home (${e.lastMileTime} min)` });
     } else {
-      steps.push({ icon: 'home', text: 'Walk home' });
+      steps.push({ icon: 'home', text: `Walk home (${e.lastMileTime} min)` });
     }
     steps.push({ icon: 'arrive', text: `Home by ${formatTime(e.arrivalTime)}`, total: formatMinutes(e.totalTime) });
     candidates.push({
@@ -2713,16 +2721,38 @@ function openInboundModal(entry) {
         </div>
       </div>
 
+      ${entry.lastMileMode === 'ebike' && entry.ebikeRideHome ? `
+      <div class="timeline-step">
+        <div class="timeline-line">
+          <div class="timeline-dot walk"></div>
+          <div class="timeline-connector"></div>
+        </div>
+        <div class="timeline-content">
+          <div class="timeline-title">E-bike toward home</div>
+          <div class="timeline-duration">${entry.ebikeRideHome} min ride</div>
+          ${ebikeAvailability.westPortal !== null ? `<div class="timeline-detail">${ebikeAvailability.westPortal} e-bike${ebikeAvailability.westPortal !== 1 ? 's' : ''} available at ${entry.exitStation}</div>` : ''}
+        </div>
+      </div>
       <div class="timeline-step">
         <div class="timeline-line">
           <div class="timeline-dot destination"></div>
         </div>
         <div class="timeline-content">
-          <div class="timeline-title">${entry.lastMileMode === 'ebike' ? 'E-bike home' : 'Walk home'}</div>
-          <div class="timeline-duration">${entry.lastMileTime || entry.walkHome} min ${entry.lastMileMode === 'ebike' ? 'ride' : 'walk'}</div>
-          ${entry.lastMileMode === 'ebike' && ebikeAvailability.westPortal !== null ? `<div class="timeline-detail">${ebikeAvailability.westPortal} e-bike${ebikeAvailability.westPortal !== 1 ? 's' : ''} available at West Portal</div>` : ''}
+          <div class="timeline-title">Walk home from dock</div>
+          <div class="timeline-duration">${entry.walkFromDock} min walk</div>
         </div>
       </div>
+      ` : `
+      <div class="timeline-step">
+        <div class="timeline-line">
+          <div class="timeline-dot destination"></div>
+        </div>
+        <div class="timeline-content">
+          <div class="timeline-title">Walk home</div>
+          <div class="timeline-duration">${entry.lastMileTime || entry.walkHome} min walk</div>
+        </div>
+      </div>
+      `}
     </div>
 
   `;
