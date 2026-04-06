@@ -844,7 +844,7 @@ h1 {
 #bus-stop-screen {
   max-width: 540px;
   margin: 0 auto;
-  padding: 0 16px 40px;
+  padding: 0 20px 40px;
   padding-bottom: calc(40px + env(safe-area-inset-bottom));
 }
 
@@ -856,9 +856,9 @@ h1 {
   z-index: 100;
   background: var(--bg);
   padding-top: calc(16px + env(safe-area-inset-top));
-  margin: 0 -16px;
-  padding-left: 16px;
-  padding-right: 16px;
+  margin: 0 -20px;
+  padding-left: 20px;
+  padding-right: 20px;
   padding-bottom: 12px;
   margin-bottom: 16px;
 }
