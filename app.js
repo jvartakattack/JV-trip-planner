@@ -45,11 +45,11 @@ const BUS_ROUTES = {
     dotClass: 'bus-48',
     direction: 'Quintara / 24th St',
     stopCoords: { lat: 37.7462, lng: -122.4756 },
-    transferStation: 'Taraval & 19th',
-    transferCoords: { lat: 37.7432, lng: -122.4755 },
+    transferStation: 'West Portal',
+    transferCoords: { lat: 37.7408, lng: -122.4661 },
     walkToStop: WALK_TO_BUS_STOP_MIN,
-    timeToTransfer: 3,
-    trainLines: ['L'],
+    timeToTransfer: 10,
+    trainLines: ['K', 'L', 'M'],
     schedule: {
       weekday: {
         start: 330, end: 1470, // 5:30 AM – 12:30 AM
@@ -114,7 +114,6 @@ const MUNI_STATIONS = {
 // E-bike: walk to nearest dock, then ride to a Muni station
 const WALK_TO_DOCK_MIN = 7;       // home → nearest dock (Outer Sunset)
 const EBIKE_STATIONS = [
-  { name: 'Taraval & 19th', ...MUNI_STATIONS['Taraval & 19th'], rideMin: 2, walkMin: WALK_TO_DOCK_MIN },
   { name: 'West Portal',    ...MUNI_STATIONS['West Portal'],    rideMin: 5, walkMin: WALK_TO_DOCK_MIN }
 ];
 
@@ -1780,7 +1779,8 @@ function renderArrivals() {
           exitStation: exitStation.name,
           totalTime,
           arrivalTime: arrivalDate,
-          trainDepartAbsolute: trainAtThisStation
+          trainDepartAbsolute: trainAtThisStation,
+          timeToTrain: Math.round(trainAtThisStation - nowMin)
         });
       }
 
