@@ -673,8 +673,11 @@ const INBOUND_EXIT_STATIONS = {
 function findClosestBoardingStation(originLat, originLng) {
   let results = [];
   for (const [name, station] of Object.entries(MUNI_STATIONS)) {
-    // Skip home-area surface stops west of West Portal — those are exit stations, not boarding
-    if (INBOUND_EXIT_STATIONS[name]) continue;
+    // Skip home-area exit stations UNLESS origin is very close (within 500m)
+    if (INBOUND_EXIT_STATIONS[name]) {
+      const distToOrigin = haversineDistanceRaw(originLat, originLng, station.lat, station.lng);
+      if (distToOrigin > 0.5) continue;
+    }
     const dist = haversineDistance(originLat, originLng, station.lat, station.lng);
     const walkMin = Math.round((dist / 5) * 60); // 5 km/h walking
     const bikeMin = Math.round((dist / 15) * 60); // 15 km/h biking
@@ -716,7 +719,50 @@ function buildInboundEntries(origin, currentTime, firstMileMode) {
   // Consider the 6 closest station+line combos
   const nearbyStations = boardingOptions.slice(0, 6);
 
+  // Distance from origin to home — used to filter out "going away" routes
+  const originToHomeDist = haversineDistanceRaw(origin.lat, origin.lng, HOME_STOP.lat, HOME_STOP.lng);
+
+  // Direct e-bike home (no transit) — when origin is near an exit station with e-bikes
+  if (firstMileMode === 'ebike') {
+    for (const [exitName, exitInfo] of Object.entries(INBOUND_EXIT_STATIONS)) {
+      if (!exitInfo.ebikeHome) continue;
+      const exitStation = MUNI_STATIONS[exitName];
+      const distToExit = haversineDistanceRaw(origin.lat, origin.lng, exitStation.lat, exitStation.lng);
+      if (distToExit > 0.5) continue; // within 500m
+      const walkToStation = Math.max(1, Math.round((distToExit / 5) * 60));
+      const totalTime = walkToStation + exitInfo.ebikeHome;
+      const arrivalMin = nowMin + totalTime;
+      const arrivalDate = new Date(currentTime);
+      arrivalDate.setHours(Math.floor(arrivalMin / 60), Math.round(arrivalMin % 60), 0, 0);
+      entries.push({
+        boardingStation: exitName,
+        boardingCoords: { lat: exitStation.lat, lng: exitStation.lng },
+        firstMileMode: 'walk',
+        firstMileTime: walkToStation,
+        walkToDock: 0,
+        bikeRide: 0,
+        dockName: null,
+        dockEbikes: null,
+        trainLine: null,
+        trainWait: 0,
+        trainRideTime: 0,
+        trainDepartAbsolute: 0,
+        exitStation: 'Home',
+        lastMileMode: 'ebike',
+        lastMileTime: exitInfo.ebikeHome,
+        walkHome: exitInfo.ebikeHome,
+        totalTime,
+        arrivalTime: arrivalDate,
+        arrivalMin,
+        directEbike: true
+      });
+    }
+  }
+
   for (const boarding of nearbyStations) {
+    // Skip if boarding station is further from home than origin (going wrong direction)
+    const boardingToHomeDist = haversineDistanceRaw(boarding.lat, boarding.lng, HOME_STOP.lat, HOME_STOP.lng);
+    if (boardingToHomeDist > originToHomeDist * 1.1) continue;
     let firstMileTime, walkToDock = 0, bikeRide = 0;
     if (firstMileMode === 'ebike' && nearestDock) {
       walkToDock = nearestDock.walkMin;
@@ -1174,6 +1220,8 @@ function highlightRecommendedCard() {
 function winnerToTab(mode, isInbound) {
   if (!mode) return null;
   if (!isInbound) return mode; // outbound: mode is 'bus', 'ebike', or 'walk'
+  if (mode === 'direct-walk') return 'walk';
+  if (mode === 'direct-ebike') return 'ebike';
   const [fm, lm] = mode.split('-');
   if (fm === 'ebike') return 'ebike';
   if (lm === 'ebike') return 'bus';
@@ -1481,6 +1529,25 @@ function renderArrivals() {
     }
 
     const inboundCards = inboundEntries.map((e, i) => {
+      // Direct e-bike home (no transit)
+      if (e.directEbike) {
+        return `
+          <div class="arrival-card" data-index="${i}" data-key="direct-ebike">
+            <div class="card-top">
+              <div style="display:flex;align-items:center;gap:10px">
+                <span style="font-size:16px">&#x1f6b2;</span>
+                <span style="font-size:14px;font-weight:600">E-bike home</span>
+              </div>
+              <span style="font-size:13px;color:var(--text-dim)">${e.lastMileTime}m ride</span>
+            </div>
+            <div class="card-bottom">
+              <span>Home by ${formatTime(e.arrivalTime)}</span>
+              <span class="total-time">${formatMinutes(e.totalTime)}</span>
+            </div>
+          </div>
+        `;
+      }
+
       const trainInfo = TRAIN_LINE_COLORS[e.trainLine];
       const trainDepartTime = new Date(currentTime);
       trainDepartTime.setHours(Math.floor(e.trainDepartAbsolute / 60), Math.round(e.trainDepartAbsolute % 60), 0, 0);
@@ -2228,11 +2295,53 @@ function openOutboundModal(entry, mode) {
 
 function getInboundWinner(origin, currentTime) {
   const candidates = [];
+  const nowMin = minutesSinceMidnight(currentTime);
+
+  // Direct walk home is always a candidate
+  const directHomeDist = haversineDistance(origin.lat, origin.lng, HOME_STOP.lat, HOME_STOP.lng);
+  const directHomeMin = Math.round((directHomeDist / 5) * 60);
+  const directArrivalMin = nowMin + directHomeMin;
+  const directArrival = new Date(currentTime.getTime() + directHomeMin * 60000);
+  candidates.push({
+    min: directArrivalMin,
+    mode: 'direct-walk',
+    modeCount: 1,
+    entry: { totalTime: directHomeMin, arrivalTime: directArrival, arrivalMin: directArrivalMin },
+    summary: `Walk home. Home by ${formatTime(directArrival)}.`,
+    steps: [
+      { icon: 'walk', text: 'Walk home' },
+      { icon: 'arrive', text: `Home by ${formatTime(directArrival)}`, total: formatMinutes(directHomeMin) }
+    ],
+    availHtml: '',
+    isDirectWalk: true
+  });
 
   for (const mode of ['walk', 'ebike']) {
     const entries = buildInboundEntries(origin, currentTime, mode);
     if (entries.length === 0) continue;
     const e = entries[0];
+
+    // Handle direct e-bike home entries (no transit)
+    if (e.directEbike) {
+      const availParts = [];
+      if (ebikeAvailability.westPortal !== null) {
+        availParts.push(`${ebikeAvailability.westPortal} e-bike${ebikeAvailability.westPortal !== 1 ? 's' : ''} available at West Portal`);
+      }
+      candidates.push({
+        min: e.arrivalMin,
+        mode: 'direct-ebike',
+        modeCount: 1,
+        entry: e,
+        summary: `E-bike home from ${e.boardingStation}. Home by ${formatTime(e.arrivalTime)}.`,
+        steps: [
+          { icon: 'ebike', text: 'E-bike home' },
+          { icon: 'arrive', text: `Home by ${formatTime(e.arrivalTime)}`, total: formatMinutes(e.totalTime) }
+        ],
+        availHtml: availParts.length > 0 ? availParts.join(' · ') : ''
+      });
+      continue;
+    }
+
     const trainName = TRAIN_LINE_COLORS[e.trainLine].name;
     const dockLabel = e.dockName ? ` at ${e.dockName}` : '';
     const firstMileDesc = mode === 'ebike'
