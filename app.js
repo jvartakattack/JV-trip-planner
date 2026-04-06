@@ -760,6 +760,8 @@ function buildInboundEntries(origin, currentTime, firstMileMode) {
   if (firstMileMode === 'ebike') {
     for (const [exitName, exitInfo] of Object.entries(INBOUND_EXIT_STATIONS)) {
       if (!exitInfo.ebikeHome) continue;
+      // Only show if e-bikes are actually available at this station
+      if (exitName === 'West Portal' && !(ebikeAvailability.westPortal > 0)) continue;
       const exitStation = MUNI_STATIONS[exitName];
       const distToExit = haversineDistanceRaw(origin.lat, origin.lng, exitStation.lat, exitStation.lng);
       if (distToExit > 0.5) continue; // within 500m
