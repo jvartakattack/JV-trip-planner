@@ -786,6 +786,66 @@ h1 {
   border-color: var(--accent);
 }
 
+/* ── Bus Stop Screen ─────────────────────────────────── */
+#bus-stop-screen {
+  max-width: 540px;
+  margin: 0 auto;
+  padding: 0 20px 40px;
+  padding-bottom: calc(40px + env(safe-area-inset-bottom));
+}
+
+#bus-stop-screen.hidden { display: none; }
+
+#bus-stop-screen header {
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  background: var(--bg);
+  padding-top: calc(16px + env(safe-area-inset-top));
+  margin: 0 -20px;
+  padding-left: 20px;
+  padding-right: 20px;
+  padding-bottom: 12px;
+  margin-bottom: 16px;
+}
+
+.bus-stop-subtitle {
+  font-size: 14px;
+  color: var(--text-dim);
+  margin-top: 4px;
+}
+
+.bus-stop-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 14px 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-left: 3px solid transparent;
+}
+
+.bus-stop-card.urgent { border-left-color: var(--red); }
+.bus-stop-card.soon { border-left-color: var(--orange); }
+
+.bus-stop-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.bus-stop-direction {
+  font-size: 13px;
+  color: var(--text-dim);
+}
+
+.bus-stop-realtime {
+  font-size: 10px;
+  color: var(--green);
+  font-weight: 600;
+}
+
 /* ── Responsive ──────────────────────────────────────── */
 @media (max-width: 400px) {
   #app { padding: 14px 10px 32px; }
