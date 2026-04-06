@@ -113,10 +113,40 @@ const MUNI_STATIONS = {
 
 
 // E-bike: walk to nearest dock, then ride to a Muni station
-const WALK_TO_DOCK_MIN = 7;       // home → nearest dock (Outer Sunset)
-const EBIKE_STATIONS = [
-  { name: 'West Portal',    ...MUNI_STATIONS['West Portal'],    rideMin: 5, walkMin: WALK_TO_DOCK_MIN }
+const WALK_TO_DOCK_MIN = 7;       // home → either home dock (~7 min walk)
+// Outbound e-bike dock preference: 24th & Quintara is on the way, Noriega adds ~2 min
+const OUTBOUND_DOCKS = [
+  { name: '24th Ave & Quintara', dockRef: 0, rideExtra: 0 },  // preferred — on the way
+  { name: '21st Ave & Noriega',  dockRef: 1, rideExtra: 2 }   // fallback — opposite direction
 ];
+const EBIKE_BASE_RIDE_MIN = 5;    // base ride time from 24th dock to West Portal
+
+// Pick the best outbound dock: prefer 24th & Quintara, fall back to Noriega
+function getOutboundDock() {
+  const docks = ebikeAvailability.homeDocks;
+  if (!docks || docks.length === 0) return null;
+  for (const pref of OUTBOUND_DOCKS) {
+    const dock = docks[pref.dockRef];
+    if (dock && dock.ebikes > 0) {
+      return {
+        name: dock.name,
+        ebikes: dock.ebikes,
+        walkMin: WALK_TO_DOCK_MIN,
+        rideMin: EBIKE_BASE_RIDE_MIN + pref.rideExtra
+      };
+    }
+  }
+  return null; // no bikes at either dock
+}
+
+// Build EBIKE_STATIONS dynamically based on dock availability
+function getEbikeStations() {
+  const dock = getOutboundDock();
+  if (!dock) return [];
+  return [
+    { name: 'West Portal', ...MUNI_STATIONS['West Portal'], rideMin: dock.rideMin, walkMin: dock.walkMin, dockName: dock.name, dockEbikes: dock.ebikes }
+  ];
+}
 
 // Walk: only Taraval & 19th is walkable (~12 min from home)
 const WALK_STATION = {
@@ -125,7 +155,7 @@ const WALK_STATION = {
   walkMin: 12
 };
 
-// Haversine without depending on the function defined below (hoisted for EBIKE_STATIONS init)
+// Haversine for distance calculations
 function haversineDistanceRaw(lat1, lng1, lat2, lng2) {
   const R = 6371;
   const dLat = (lat2 - lat1) * Math.PI / 180;
@@ -1085,8 +1115,9 @@ function buildDefaultEntries(currentTime) {
 function buildEbikeEntries(currentTime) {
   const entries = [];
   const nowMin = minutesSinceMidnight(currentTime);
+  const ebikeStations = getEbikeStations();
 
-  for (const station of EBIKE_STATIONS) {
+  for (const station of ebikeStations) {
     const walkMin = station.walkMin || 0;
     const arrivalAtStationMin = nowMin + walkMin + station.rideMin;
 
@@ -1120,6 +1151,8 @@ function buildEbikeEntries(currentTime) {
         stationCoords: { lat: station.lat, lng: station.lng },
         walkMin,
         rideMin: station.rideMin,
+        dockName: station.dockName || null,
+        dockEbikes: station.dockEbikes || null,
         trainLine: line,
         trainWait: Math.round(waitAtStation),
         trainDepartAbsolute: trainAtThisStation,
@@ -1231,8 +1264,9 @@ function getBestWalkJourney(currentTime, destination) {
 function getBestBikeJourney(currentTime, destination) {
   const nowMin = minutesSinceMidnight(currentTime);
   let best = null;
+  const ebikeStations = getEbikeStations();
 
-  for (const station of EBIKE_STATIONS) {
+  for (const station of ebikeStations) {
     const walkMin = station.walkMin || 0;
     const arrivalAtStationMin = nowMin + walkMin + station.rideMin;
     for (const line of station.lines) {
@@ -1257,14 +1291,14 @@ function getBestBikeJourney(currentTime, destination) {
         const arrivalDate = new Date(currentTime);
         arrivalDate.setHours(Math.floor(arrivalMin / 60), Math.round(arrivalMin % 60), 0, 0);
         if (!best || arrivalMin < best.arrivalMin) {
-          best = { stationName: station.name, walkMin, rideMin: station.rideMin, trainLine: line, exitStation: exitStation.name, totalTime, arrivalMin, arrivalTime: arrivalDate, trainWait: Math.round(waitAtStation) };
+          best = { stationName: station.name, walkMin, rideMin: station.rideMin, dockName: station.dockName || null, dockEbikes: station.dockEbikes || null, trainLine: line, exitStation: exitStation.name, totalTime, arrivalMin, arrivalTime: arrivalDate, trainWait: Math.round(waitAtStation) };
         }
       } else {
         // No destination — optimize for earliest train departure
         if (!best || trainAtStation < best.trainDepartMin) {
           const departTime = new Date(currentTime);
           departTime.setHours(Math.floor(trainAtStation / 60), Math.round(trainAtStation % 60), 0, 0);
-          best = { stationName: station.name, walkMin, rideMin: station.rideMin, trainLine: line, trainDepartMin: trainAtStation, departTime, trainWait: Math.round(waitAtStation) };
+          best = { stationName: station.name, walkMin, rideMin: station.rideMin, dockName: station.dockName || null, dockEbikes: station.dockEbikes || null, trainLine: line, trainDepartMin: trainAtStation, departTime, trainWait: Math.round(waitAtStation) };
         }
       }
     }
@@ -1463,7 +1497,7 @@ function getOutboundWinner(currentTime) {
     if (bestBike) {
       const trainInfo = TRAIN_LINE_COLORS[bestBike.trainLine];
       candidates.push({ min: bestBike.arrivalMin, mode: 'ebike', modeCount: 3, journey: bestBike,
-        summary: `Pick up e-bike near home, bike to ${bestBike.stationName}, catch the ${trainInfo.name} to ${bestBike.exitStation}. Arrive by ${formatTime(bestBike.arrivalTime)}.`,
+        summary: `Pick up e-bike at ${bestBike.dockName || 'nearby dock'}, bike to ${bestBike.stationName}, catch the ${trainInfo.name} to ${bestBike.exitStation}. Arrive by ${formatTime(bestBike.arrivalTime)}.`,
         steps: [
           { icon: 'ebike', text: `Bike to ${bestBike.stationName}` },
           { icon: 'train', label: bestBike.trainLine, text: `to ${bestBike.exitStation}`, badge: trainInfo.cssClass },
@@ -1496,7 +1530,7 @@ function getOutboundWinner(currentTime) {
     if (bestBike) {
       const trainInfo = TRAIN_LINE_COLORS[bestBike.trainLine];
       candidates.push({ min: bestBike.trainDepartMin, mode: 'ebike', modeCount: 3, journey: bestBike,
-        summary: `Pick up e-bike near home, bike to ${bestBike.stationName}, catch the ${trainInfo.name} at ${formatTime(bestBike.departTime)}.`,
+        summary: `Pick up e-bike at ${bestBike.dockName || 'nearby dock'}, bike to ${bestBike.stationName}, catch the ${trainInfo.name} at ${formatTime(bestBike.departTime)}.`,
         steps: [
           { icon: 'ebike', text: `Bike to ${bestBike.stationName}` },
           { icon: 'train', label: bestBike.trainLine, text: `at ${formatTime(bestBike.departTime)}`, badge: trainInfo.cssClass }
@@ -1838,7 +1872,8 @@ function renderArrivals() {
       );
       const entries = [];
 
-      for (const station of EBIKE_STATIONS) {
+      const ebikeStations = getEbikeStations();
+      for (const station of ebikeStations) {
         const walkMin = station.walkMin || 0;
         const arrivalAtStationMin = nowMin + walkMin + station.rideMin;
 
@@ -1878,6 +1913,8 @@ function renderArrivals() {
             stationCoords: { lat: station.lat, lng: station.lng },
             walkMin,
             rideMin: station.rideMin,
+            dockName: station.dockName || null,
+            dockEbikes: station.dockEbikes || null,
             trainLine: line,
             trainWait: Math.round(waitAtStation),
             trainRideTime,
