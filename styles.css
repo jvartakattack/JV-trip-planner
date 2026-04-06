@@ -877,10 +877,11 @@ h1 {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  border-left: 3px solid transparent;
 }
 
-.bus-stop-card.urgent { border-left: 3px solid var(--red); }
-.bus-stop-card.soon { border-left: 3px solid var(--orange); }
+.bus-stop-card.urgent { border-left-color: var(--red); }
+.bus-stop-card.soon { border-left-color: var(--orange); }
 
 .bus-stop-left {
   display: flex;
