@@ -14,7 +14,7 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="apple-mobile-web-app-title" content="JV Trips" />
   <link rel="apple-touch-icon" id="apple-icon" href="icon-192.png" />
-<link id="theme-stylesheet" rel="stylesheet" href="styles.css?v=25" />
+<link id="theme-stylesheet" rel="stylesheet" href="styles.css?v=26" />
   <script>
     // Kill any existing service worker immediately
     if ('serviceWorker' in navigator) {
@@ -39,6 +39,9 @@
       </button>
       <button class="landing-card" data-direction="inbound">
         <span class="landing-icon">🏠</span>
+      </button>
+      <button class="landing-card" data-direction="bus-stop">
+        <span class="landing-icon">🚌</span>
       </button>
     </div>
     <div class="theme-picker">
@@ -98,6 +101,24 @@
     </main>
   </div>
 
+  <!-- Bus stop screen -->
+  <div id="bus-stop-screen" class="hidden">
+    <header>
+      <div class="header-top">
+        <button id="bus-stop-back" class="back-btn" aria-label="Back">‹</button>
+        <h1>Next Bus</h1>
+        <div style="display:flex;align-items:center;gap:12px">
+          <div id="bus-stop-live" class="live-badge hidden">LIVE</div>
+          <div id="bus-stop-clock" class="clock"></div>
+        </div>
+      </div>
+      <p class="bus-stop-subtitle">2020 20th Ave</p>
+    </header>
+    <div id="bus-stop-list" class="arrivals-list">
+      <div class="empty-state">Loading...</div>
+    </div>
+  </div>
+
   <!-- Journey detail modal -->
   <div id="modal-overlay" class="modal-overlay hidden">
     <div class="modal">
@@ -106,12 +127,12 @@
     </div>
   </div>
 
-  <script src="app.js?v=26"></script>
+  <script src="app.js?v=27"></script>
   <script>
     // Theme switcher
     (function() {
       var themes = {
-        default: 'styles.css?v=25',
+        default: 'styles.css?v=26',
         sleek: 'styles-sleek.css?v=1',
         genz: 'styles-genz.css?v=1',
         safari: 'styles-safari.css?v=1'

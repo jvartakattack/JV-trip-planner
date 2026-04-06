@@ -2581,6 +2581,60 @@ document.addEventListener('DOMContentLoaded', () => {
     requestAnimationFrame(frame);
   }
 
+  function driveBus(card, callback) {
+    const icon = card.querySelector('.landing-icon');
+    if (!icon) { callback(); return; }
+
+    const rect = icon.getBoundingClientRect();
+    const clone = document.createElement('div');
+    clone.textContent = icon.textContent;
+    clone.style.cssText = `
+      position:fixed;left:${rect.left}px;top:${rect.top}px;
+      font-size:${rect.height}px;line-height:1;
+      z-index:9999;pointer-events:none;will-change:transform,opacity;
+    `;
+    document.body.appendChild(clone);
+    icon.style.opacity = '0';
+
+    landing.style.transition = 'opacity 0.5s ease';
+    landing.style.opacity = '0';
+
+    const startX = rect.left;
+    const startY = rect.top;
+    const offScreenX = window.innerWidth + 100;
+    const duration = 800;
+    const startTime = performance.now();
+    let callbackFired = false;
+
+    function frame(now) {
+      const elapsed = now - startTime;
+      const t = Math.min(elapsed / duration, 1);
+      // Ease-in: accelerate to the right
+      const ease = t * t;
+      const x = ease * (offScreenX - startX);
+      // Slight bounce on the y-axis for character
+      const bounce = Math.sin(t * Math.PI * 3) * 6 * (1 - t);
+      const tilt = -3 + ease * 5;
+      const scale = 1 + t * 0.15;
+
+      clone.style.transform = `translate(${x}px, ${bounce}px) scale(${scale}) rotate(${tilt}deg)`;
+      clone.style.opacity = 1 - t * 0.6;
+
+      if (t >= 0.5 && !callbackFired) {
+        callbackFired = true;
+        callback();
+      }
+
+      if (t < 1) {
+        requestAnimationFrame(frame);
+      } else {
+        clone.remove();
+        icon.style.opacity = '';
+      }
+    }
+    requestAnimationFrame(frame);
+  }
+
   let locationReady = true;
 
   async function enterApp(direction) {
@@ -2624,11 +2678,128 @@ document.addEventListener('DOMContentLoaded', () => {
       const direction = card.dataset.direction;
       if (direction === 'outbound') {
         launchRocket(card, () => enterApp(direction));
+      } else if (direction === 'bus-stop') {
+        driveBus(card, () => enterBusStop());
       } else {
         dropHome(card, () => enterApp(direction));
       }
     });
   });
+
+  // ── Bus Stop Screen ──────────────────────────────────────────────────────
+  const busStopScreen = document.getElementById('bus-stop-screen');
+  let busStopInterval = null;
+
+  async function enterBusStop() {
+    landing.classList.add('hidden');
+    busStopScreen.classList.remove('hidden');
+
+    await refreshLiveData();
+    renderBusStop();
+
+    if (!busStopInterval) {
+      busStopInterval = setInterval(async () => {
+        await refreshLiveData();
+        renderBusStop();
+      }, 30000);
+    }
+  }
+
+  function renderBusStop() {
+    // Update clock
+    const clockEl = document.getElementById('bus-stop-clock');
+    clockEl.textContent = now().toLocaleTimeString('en-US', {
+      hour: 'numeric', minute: '2-digit', second: '2-digit'
+    });
+
+    // Update live badge
+    const liveBadge = document.getElementById('bus-stop-live');
+    if (liveData.active) {
+      liveBadge.classList.remove('hidden', 'error');
+      liveBadge.textContent = 'LIVE';
+    } else if (liveData.error) {
+      liveBadge.classList.remove('hidden');
+      liveBadge.classList.add('error');
+      liveBadge.textContent = 'OFFLINE';
+    } else {
+      liveBadge.classList.add('hidden');
+    }
+
+    // Gather all bus arrivals for routes 28 and 48
+    const currentTime = now();
+    const allBuses = [];
+
+    for (const routeKey of ['28', '48']) {
+      const route = BUS_ROUTES[routeKey];
+      const arrivals = getArrivals(route, currentTime, 6);
+      for (const arr of arrivals) {
+        allBuses.push({
+          route: routeKey,
+          etaMinutes: arr.etaMinutes,
+          departureTime: arr.departureTime,
+          isRealTime: arr.isRealTime,
+          color: route.color,
+          cssClass: route.cssClass,
+          direction: route.direction
+        });
+      }
+    }
+
+    // Sort chronologically
+    allBuses.sort((a, b) => a.etaMinutes - b.etaMinutes);
+
+    const list = document.getElementById('bus-stop-list');
+    if (allBuses.length === 0) {
+      list.innerHTML = '<div class="empty-state">No buses right now</div>';
+      return;
+    }
+
+    list.innerHTML = allBuses.map(bus => {
+      const urgency = bus.etaMinutes <= 3 ? 'urgent' : bus.etaMinutes <= 7 ? 'soon' : '';
+      const etaClass = bus.etaMinutes <= 3 ? 'urgent' : bus.etaMinutes <= 7 ? 'soon' : '';
+      const etaText = bus.etaMinutes === 0 ? 'NOW' : `${bus.etaMinutes} min`;
+      const timeStr = bus.departureTime
+        ? bus.departureTime.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
+        : '';
+      return `
+        <div class="bus-stop-card ${urgency}">
+          <div class="bus-stop-left">
+            <span class="route-badge ${bus.cssClass}">${bus.route}</span>
+            <div>
+              <div class="bus-stop-direction">${bus.direction}</div>
+              ${bus.isRealTime ? '<div class="bus-stop-realtime">Live</div>' : ''}
+            </div>
+          </div>
+          <div style="text-align:right">
+            <div class="bus-eta ${etaClass}">${etaText}</div>
+            <div style="font-size:12px;color:var(--text-dim)">${timeStr}</div>
+          </div>
+        </div>`;
+    }).join('');
+  }
+
+  function leaveBusStop() {
+    busStopScreen.classList.add('hidden');
+    landing.style.opacity = '';
+    landing.style.transition = '';
+    landing.classList.remove('hidden');
+    if (busStopInterval) {
+      clearInterval(busStopInterval);
+      busStopInterval = null;
+    }
+  }
+
+  document.getElementById('bus-stop-back').addEventListener('click', leaveBusStop);
+
+  // Keep bus stop clock ticking every second
+  setInterval(() => {
+    if (!busStopScreen.classList.contains('hidden')) {
+      const clockEl = document.getElementById('bus-stop-clock');
+      clockEl.textContent = now().toLocaleTimeString('en-US', {
+        hour: 'numeric', minute: '2-digit', second: '2-digit'
+      });
+    }
+  }, 1000);
 
   function goBack() {
     app.classList.add('hidden');
@@ -2656,7 +2827,11 @@ document.addEventListener('DOMContentLoaded', () => {
     const dy = Math.abs(e.changedTouches[0].clientY - touchStartY);
     // Swipe right: must start near left edge, travel >80px horizontally, mostly horizontal, and app is showing
     if (touchStartX < 40 && dx > 80 && dy < dx * 0.5 && landing.classList.contains('hidden')) {
-      goBack();
+      if (!busStopScreen.classList.contains('hidden')) {
+        leaveBusStop();
+      } else {
+        goBack();
+      }
     }
   }, { passive: true });
 
