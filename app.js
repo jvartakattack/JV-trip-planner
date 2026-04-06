@@ -8,6 +8,7 @@ const NEXTBUS_STOPS = {
   // route|stopTag pairs for predictionsForMultiStops
   bus28: { route: '28', stopTag: '6298' },   // 28 at 19th & Quintara
   bus48: { route: '48', stopTag: '6298' },   // 48 at Quintara & 19th
+  bus48_wp: { route: '48', stopTag: '16738' }, // 48 at Ulloa & West Portal Ave
   trainK: { route: 'KT', stopTag: '7218' },  // K at West Portal
   trainL_wp: { route: 'L', stopTag: '7218' }, // L at West Portal
   trainM: { route: 'M', stopTag: '7218' },    // M at West Portal
@@ -232,7 +233,25 @@ function parseNextBusXml(xml) {
     if (routeTag === '28') {
       results.bus['28'] = arrivals;
     } else if (routeTag === '48') {
-      results.bus['48'] = arrivals;
+      // 48 serves two stops — split by stop tag (home stop vs West Portal area)
+      const homeArrivals = [];
+      const wpArrivals = [];
+      for (const dir of directions) {
+        for (const p of dir.querySelectorAll('prediction')) {
+          const stopTag = p.getAttribute('stopTag') || pred.getAttribute('stopTag');
+          const epochMs = parseInt(p.getAttribute('epochTime'));
+          const departureTime = new Date(epochMs);
+          const etaMinutes = Math.max(0, parseInt(p.getAttribute('minutes')));
+          const entry = { departureTime, etaMinutes, isRealTime: true };
+          if (stopTag === NEXTBUS_STOPS.bus48_wp.stopTag) {
+            wpArrivals.push(entry);
+          } else {
+            homeArrivals.push(entry);
+          }
+        }
+      }
+      results.bus['48'] = homeArrivals.sort((a, b) => a.etaMinutes - b.etaMinutes);
+      results.bus['48_wp'] = wpArrivals.sort((a, b) => a.etaMinutes - b.etaMinutes);
     } else if (routeTag === 'KT') {
       if (!results.train['West Portal']) results.train['West Portal'] = {};
       results.train['West Portal'].K = arrivals;
@@ -669,6 +688,21 @@ const INBOUND_EXIT_STATIONS = {
   'West Portal':    { walkHome: 18, ebikeHome: EBIKE_RIDE_HOME_MIN }
 };
 
+// Buses catchable near exit stations that go toward home
+const INBOUND_BUS_OPTIONS = [
+  {
+    route: '48',
+    liveDataKey: '48_wp',           // key in liveData.bus for this stop
+    stopName: 'Ulloa & West Portal Ave',
+    stopCoords: { lat: 37.7413, lng: -122.4667 },
+    nearStation: 'West Portal',     // which exit station this stop is near
+    rideTime: 5,                    // minutes on bus to home area
+    walkFromBus: WALK_TO_BUS_STOP_MIN, // walk from bus drop-off to home
+    color: '#7b1fa2',
+    cssClass: 'r48'
+  }
+];
+
 // Find the closest Muni station to an origin point (for boarding)
 function findClosestBoardingStation(originLat, originLng) {
   let results = [];
@@ -756,6 +790,71 @@ function buildInboundEntries(origin, currentTime, firstMileMode) {
         arrivalMin,
         directEbike: true
       });
+    }
+  }
+
+  // Inbound bus options — catch a bus near an exit station that goes toward home
+  for (const busOpt of INBOUND_BUS_OPTIONS) {
+    const distToStop = haversineDistanceRaw(origin.lat, origin.lng, busOpt.stopCoords.lat, busOpt.stopCoords.lng);
+    if (distToStop > 1.0) continue; // only if within 1km of the bus stop
+    const walkToStop = Math.max(1, Math.round((distToStop / 5) * 60));
+
+    // Get live predictions or fall back to schedule
+    const livePreds = liveData.bus[busOpt.liveDataKey];
+    let busDepartures = [];
+    if (livePreds && livePreds.length > 0) {
+      busDepartures = livePreds.slice(0, 3).map(p => ({
+        etaMinutes: p.etaMinutes, isRealTime: true,
+        departureTime: p.departureTime
+      }));
+    } else {
+      // Schedule fallback using the route config
+      const route = BUS_ROUTES[busOpt.route];
+      if (route) {
+        busDepartures = calculateScheduledArrivals(route, currentTime, 3).map(a => ({
+          etaMinutes: a.etaMinutes, isRealTime: false,
+          departureTime: a.departureTime
+        }));
+      }
+    }
+
+    for (const dep of busDepartures) {
+      // Can we make it to the stop before the bus arrives?
+      if (dep.etaMinutes < walkToStop) continue;
+      const waitTime = dep.etaMinutes - walkToStop;
+      const totalTime = walkToStop + waitTime + busOpt.rideTime + busOpt.walkFromBus;
+      const arrivalMin = nowMin + totalTime;
+      const arrivalDate = new Date(currentTime);
+      arrivalDate.setHours(Math.floor(arrivalMin / 60), Math.round(arrivalMin % 60), 0, 0);
+
+      entries.push({
+        boardingStation: busOpt.stopName,
+        boardingCoords: busOpt.stopCoords,
+        firstMileMode: 'walk',
+        firstMileTime: walkToStop,
+        walkToDock: 0,
+        bikeRide: 0,
+        dockName: null,
+        dockEbikes: null,
+        trainLine: null,
+        trainWait: waitTime,
+        trainRideTime: busOpt.rideTime,
+        trainDepartAbsolute: nowMin + dep.etaMinutes,
+        exitStation: 'Home',
+        lastMileMode: 'walk',
+        lastMileTime: busOpt.walkFromBus,
+        walkHome: busOpt.walkFromBus,
+        totalTime,
+        arrivalTime: arrivalDate,
+        arrivalMin,
+        inboundBus: true,
+        busRoute: busOpt.route,
+        busColor: busOpt.color,
+        busCssClass: busOpt.cssClass,
+        busEta: dep.etaMinutes,
+        isRealTime: dep.isRealTime
+      });
+      break; // only take the first catchable bus per route
     }
   }
 
@@ -1222,6 +1321,7 @@ function winnerToTab(mode, isInbound) {
   if (!isInbound) return mode; // outbound: mode is 'bus', 'ebike', or 'walk'
   if (mode === 'direct-walk') return 'walk';
   if (mode === 'direct-ebike') return 'ebike';
+  if (mode === 'inbound-bus') return 'bus';
   const [fm, lm] = mode.split('-');
   if (fm === 'ebike') return 'ebike';
   if (lm === 'ebike') return 'bus';
@@ -1507,9 +1607,17 @@ function renderArrivals() {
     const modeMap = { bus: 'walk', ebike: 'ebike', walk: 'walk' };
     const firstMileMode = modeMap[activeTab] || 'walk';
     let inboundEntries = buildInboundEntries(origin, entryTime, firstMileMode);
-    // Walk tab: no e-bikes at all (filter out last-mile e-bike variants)
+    // Bus tab: show only inbound bus entries
+    if (activeTab === 'bus') {
+      inboundEntries = inboundEntries.filter(e => e.inboundBus);
+    }
+    // Walk tab: no e-bikes at all (filter out last-mile e-bike variants), no buses
     if (activeTab === 'walk') {
-      inboundEntries = inboundEntries.filter(e => e.lastMileMode !== 'ebike');
+      inboundEntries = inboundEntries.filter(e => e.lastMileMode !== 'ebike' && !e.inboundBus && !e.directEbike);
+    }
+    // E-bike tab: no bus entries
+    if (activeTab === 'ebike') {
+      inboundEntries = inboundEntries.filter(e => !e.inboundBus);
     }
 
     // Direct walk home option (no transit)
@@ -1539,6 +1647,34 @@ function renderArrivals() {
                 <span style="font-size:14px;font-weight:600">E-bike home</span>
               </div>
               <span style="font-size:13px;color:var(--text-dim)">${e.lastMileTime}m ride</span>
+            </div>
+            <div class="card-bottom">
+              <span>Home by ${formatTime(e.arrivalTime)}</span>
+              <span class="total-time">${formatMinutes(e.totalTime)}</span>
+            </div>
+          </div>
+        `;
+      }
+
+      // Inbound bus (catch bus near exit station, ride toward home)
+      if (e.inboundBus) {
+        const urgency = e.busEta <= 5 ? 'soon' : '';
+        const liveLabel = e.isRealTime ? '<span style="font-size:10px;color:var(--green);font-weight:600;margin-left:6px">Live</span>' : '';
+        return `
+          <div class="arrival-card ${urgency}" data-index="${i}" data-key="bus-${e.busRoute}-${e.busEta}">
+            <div class="card-top">
+              <div style="display:flex;align-items:center;gap:10px">
+                <span class="route-badge ${e.busCssClass}">${e.busRoute}</span>
+                <span style="font-size:14px;font-weight:600">${e.boardingStation}</span>
+                ${liveLabel}
+              </div>
+              <span style="font-size:13px;color:var(--text-dim)">${e.firstMileTime}m walk</span>
+            </div>
+            <div class="card-mid">
+              <span>Bus ${e.busEta}m</span>
+              <span class="arrow">&rarr;</span>
+              <span>&#x1F3E0;</span>
+              <span style="font-size:12px;color:var(--text-dim)">${e.walkFromBus || e.lastMileTime}m walk</span>
             </div>
             <div class="card-bottom">
               <span>Home by ${formatTime(e.arrivalTime)}</span>
@@ -2320,6 +2456,47 @@ function getInboundWinner(origin, currentTime) {
     const entries = buildInboundEntries(origin, currentTime, mode);
     if (entries.length === 0) continue;
     const e = entries[0];
+
+    // Handle inbound bus entries
+    if (e.inboundBus) {
+      candidates.push({
+        min: e.arrivalMin,
+        mode: 'inbound-bus',
+        modeCount: 2,
+        entry: e,
+        summary: `Take the ${e.busRoute} from ${e.boardingStation}. Home by ${formatTime(e.arrivalTime)}.`,
+        steps: [
+          { icon: 'walk', text: `Walk to ${e.boardingStation}` },
+          { icon: 'bus', label: e.busRoute, text: 'to home', badge: e.busCssClass },
+          { icon: 'arrive', text: `Home by ${formatTime(e.arrivalTime)}`, total: formatMinutes(e.totalTime) }
+        ],
+        availHtml: e.isRealTime ? 'Live tracking' : ''
+      });
+      // Also check for non-bus entries
+      const nonBus = entries.find(ent => !ent.inboundBus && !ent.directEbike);
+      if (nonBus) {
+        const e2 = nonBus;
+        const trainName2 = TRAIN_LINE_COLORS[e2.trainLine]?.name;
+        if (trainName2) {
+          const trainInfo2 = TRAIN_LINE_COLORS[e2.trainLine];
+          candidates.push({
+            min: e2.arrivalMin,
+            mode: `${mode}-${e2.lastMileMode || 'walk'}`,
+            modeCount: 2,
+            entry: e2,
+            summary: `Walk to ${e2.boardingStation}, catch ${trainName2}. Home by ${formatTime(e2.arrivalTime)}.`,
+            steps: [
+              { icon: 'walk', text: `Walk to ${e2.boardingStation}` },
+              { icon: 'train', label: e2.trainLine, text: `to ${e2.exitStation}`, badge: trainInfo2.cssClass },
+              { icon: 'home', text: 'Walk home' },
+              { icon: 'arrive', text: `Home by ${formatTime(e2.arrivalTime)}`, total: formatMinutes(e2.totalTime) }
+            ],
+            availHtml: ''
+          });
+        }
+      }
+      continue;
+    }
 
     // Handle direct e-bike home entries (no transit)
     if (e.directEbike) {
