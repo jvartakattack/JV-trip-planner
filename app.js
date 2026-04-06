@@ -2586,6 +2586,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (!icon) { callback(); return; }
 
     const rect = icon.getBoundingClientRect();
+    // Flip the bus emoji to face left using CSS scaleX
     const clone = document.createElement('div');
     clone.textContent = icon.textContent;
     clone.style.cssText = `
@@ -2596,29 +2597,66 @@ document.addEventListener('DOMContentLoaded', () => {
     document.body.appendChild(clone);
     icon.style.opacity = '0';
 
+    // Smoke container
+    const smokeContainer = document.createElement('div');
+    smokeContainer.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;z-index:9998;pointer-events:none;overflow:hidden;';
+    document.body.appendChild(smokeContainer);
+
     landing.style.transition = 'opacity 0.5s ease';
     landing.style.opacity = '0';
 
     const startX = rect.left;
     const startY = rect.top;
-    const offScreenX = window.innerWidth + 100;
-    const duration = 800;
+    const offScreenLeft = -(rect.width + 100);
+    const duration = 900;
     const startTime = performance.now();
     let callbackFired = false;
+    let lastSmoke = 0;
 
-    function frame(now) {
-      const elapsed = now - startTime;
+    function spawnSmoke(busX, busY) {
+      const puff = document.createElement('div');
+      puff.textContent = '💨';
+      const size = 14 + Math.random() * 14;
+      // Smoke spawns behind the bus (to the right since bus goes left)
+      puff.style.cssText = `
+        position:fixed;
+        left:${busX + rect.width * 0.7}px;
+        top:${busY + rect.height * 0.2 + (Math.random() - 0.5) * 10}px;
+        font-size:${size}px;line-height:1;
+        pointer-events:none;opacity:0.8;
+        transition:all 0.8s ease-out;
+        z-index:9998;
+      `;
+      smokeContainer.appendChild(puff);
+      // Animate: drift right, float up, fade out
+      requestAnimationFrame(() => {
+        puff.style.transform = `translate(${30 + Math.random() * 40}px, ${-15 - Math.random() * 20}px) scale(${1.5 + Math.random()})`;
+        puff.style.opacity = '0';
+      });
+      setTimeout(() => puff.remove(), 900);
+    }
+
+    function frame(ts) {
+      const elapsed = ts - startTime;
       const t = Math.min(elapsed / duration, 1);
-      // Ease-in: accelerate to the right
       const ease = t * t;
-      const x = ease * (offScreenX - startX);
-      // Slight bounce on the y-axis for character
-      const bounce = Math.sin(t * Math.PI * 3) * 6 * (1 - t);
-      const tilt = -3 + ease * 5;
+      // Drive to the left
+      const x = -ease * (startX - offScreenLeft);
+      const bounce = Math.sin(t * Math.PI * 3) * 5 * (1 - t);
+      const tilt = 3 - ease * 5;
       const scale = 1 + t * 0.15;
 
-      clone.style.transform = `translate(${x}px, ${bounce}px) scale(${scale}) rotate(${tilt}deg)`;
+      // scaleX(-1) flips the bus to face left
+      clone.style.transform = `translate(${x}px, ${bounce}px) scaleX(-1) scale(${scale}) rotate(${tilt}deg)`;
       clone.style.opacity = 1 - t * 0.6;
+
+      // Spawn smoke puffs every ~60ms while bus is moving
+      if (t > 0.05 && t < 0.9 && elapsed - lastSmoke > 60) {
+        lastSmoke = elapsed;
+        const busScreenX = startX + x;
+        const busScreenY = startY + bounce;
+        spawnSmoke(busScreenX, busScreenY);
+      }
 
       if (t >= 0.5 && !callbackFired) {
         callbackFired = true;
@@ -2630,6 +2668,7 @@ document.addEventListener('DOMContentLoaded', () => {
       } else {
         clone.remove();
         icon.style.opacity = '';
+        setTimeout(() => smokeContainer.remove(), 1000);
       }
     }
     requestAnimationFrame(frame);
